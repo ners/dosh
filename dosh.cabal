@@ -1,0 +1,49 @@
+cabal-version:      3.0
+name:               dosh
+version:            23.1
+synopsis:           The power of Haskell in your terminal!
+homepage:           https://github.com/ners/dosh
+license:            GPL-3.0-or-later
+license-file:       LICENCE
+author:             ners
+maintainer:         ners@gmx.ch
+category:           System
+build-type:         Simple
+
+common common
+    default-language: GHC2021
+    ghc-options: -Wall
+    default-extensions:
+        ApplicativeDo
+        DataKinds
+        DefaultSignatures
+        DeriveAnyClass
+        DeriveGeneric
+        DerivingStrategies
+        ExplicitNamespaces
+        OverloadedStrings
+        RecordWildCards
+        TypeFamilies
+
+library
+    import:           common
+    hs-source-dirs:   src
+    exposed-modules:  MyLib
+    build-depends:    base
+
+executable dosh
+    import:           common
+    main-is:          Main.hs
+    hs-source-dirs:   app
+    build-depends:
+        base,
+        dosh
+
+test-suite dosh-test
+    import:           common
+    type:             exitcode-stdio-1.0
+    main-is:          Main.hs
+    hs-source-dirs:   test
+    build-depends:
+        base,
+        dosh
