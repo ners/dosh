@@ -32,9 +32,6 @@ There are many alternatives to Bash, but they are all fundamentally boring shell
 Instead of inventing a new shell language that can do slighty more than Bash, why not go the other way around and make an existing language usable as a shell?
 And what language is more suitable than one that was quite literally invented as a testbed for novel uses such as this?
 
-This is not a novel idea, as evidenced by the abundance of Haskell libaries that provide shell primitives.
-The only novelty of this project is a snazzy REPL around them.
-
 ## Why is it named `dosh`?
 
 Because our REPL has special handling of Haskell's [`do` notation](https://en.wikibooks.org/wiki/Haskell/do_notation).
@@ -43,3 +40,15 @@ In Haskell, the keyword `do` introduces a block of commands that evaluate sequen
 When the user enters a `do` block in `dosh`, the prompt changes to `do$`, which is also where the logo comes from.
 
 I've also been advised to avoid overt references to Haskell in the name (e.g. `hashell`, `shellmonad`), as those might spook people.
+
+## Prior art
+
+This is not a novel idea, as evidenced by the abundance of Haskell libaries that provide shell primitives.
+The only novelty of this project is a snazzy REPL around them.
+
+- [turtle: Shell programming, Haskell-style](https://hackage.haskell.org/package/turtle)
+- [shh: Simple shell scripting from Haskell](https://hackage.haskell.org/package/shh)
+- [shelly: shell-like (systems) programming in Haskell](https://hackage.haskell.org/package/shelly)
+- [ptGHCi](https://github.com/litxio/ptghci) is a high-powered REPL for Haskell, inspired by IPython
+- [Using Haskell as my shell](https://las.rs/blog/haskell-as-shell.html) (2021) by Las Safin
+- [Use Haskell for shell scripting](https://www.haskellforall.com/2015/01/use-haskell-for-shell-scripting.html) (2015) by Gabriella Gonzalez
