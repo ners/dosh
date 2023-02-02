@@ -12,7 +12,7 @@ build-type:         Simple
 
 common common
     default-language: GHC2021
-    ghc-options: -Wall
+    ghc-options: -Wall -threaded
     default-extensions:
         ApplicativeDo
         DataKinds
@@ -21,15 +21,27 @@ common common
         DeriveGeneric
         DerivingStrategies
         ExplicitNamespaces
+        OverloadedLabels
+        OverloadedRecordDot
         OverloadedStrings
         RecordWildCards
+        RecursiveDo
         TypeFamilies
 
 library
     import:           common
     hs-source-dirs:   src
-    exposed-modules:  MyLib
-    build-depends:    base
+    exposed-modules:
+        MyLib,
+        Util
+    build-depends:
+        base,
+        reflex,
+        reflex-vty,
+        text,
+        vty,
+        optics,
+        containers
 
 executable dosh
     import:           common

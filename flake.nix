@@ -11,30 +11,24 @@
       let
         pkgs = inputs.nixpkgs.legacyPackages.${system};
         lib = inputs.nixpkgs.lib;
-        src = version: pkgs.buildEnv {
-          name = "dosh-source";
-          paths = [
-            (inputs.nix-filter.lib {
-              root = ./.;
-              include = [
-                "app"
-                "src"
-                "test"
-                "dosh.cabal"
-                "CHANGELOG.md"
-                "LICENCE"
-              ];
-            })
+        src = inputs.nix-filter.lib {
+          root = ./.;
+          include = [
+            "app"
+            "src"
+            "test"
+            "dosh.cabal"
+            "CHANGELOG.md"
+            "LICENCE"
           ];
-          postBuild = ''
-            sed -i 's/^\(version: .*\)$/\1.${version}/' $out/dosh.cabal
-          '';
         };
         removeDots = version: concatStringsSep "" (splitVersion version);
         haskellPackagesOverride = ps: ps.override {
           overrides = self: super:
+            with pkgs.haskell.lib;
             {
-              dosh = self.callCabal2nix "dosh" (src super.ghc.version) { };
+              dosh = self.callCabal2nix "dosh" src { };
+              reflex-vty = doJailbreak (markUnbroken super.reflex-vty);
             };
         };
         outputsFor =
@@ -48,9 +42,11 @@
             packages.${name} = ps.${package} or ps;
             devShells.${name} = ps.shellFor {
               packages = ps: [ ps.dosh ];
+              withHoogle = true;
               nativeBuildInputs = with ps; [
                 cabal-install
                 fourmolu
+                haskell-language-server
               ];
             };
           };
