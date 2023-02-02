@@ -16,9 +16,9 @@ jobs:
         target: ['default']
         os: ['ubuntu-latest', 'macos-latest']
     runs-on: ${{ matrix.os }}
-    name: Build ${{ target }} on ${{ matrix.os }}
+    name: Build ${{ matrix.target }} on ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v3
     - uses: cachix/install-nix-action@v18
     - name: Build
-      run: nix build -L .#${{ target }}
+      run: nix build -L .#${{ matrix.target }}
