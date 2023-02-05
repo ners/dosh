@@ -1,9 +1,14 @@
 module MyLib (someFunc) where
 
-import Control.Concurrent (threadDelay)
+import Control.Concurrent
+import Control.Concurrent (newMVar, threadDelay)
 import Control.Monad
+import Control.Monad (forM_, forever)
 import Control.Monad.Fix (MonadFix)
+import Control.Monad.IO.Class
 import Control.Monad.IO.Class (MonadIO, liftIO)
+import Data.Function qualified as Text
+import Data.Functor (void)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Text (Text)
@@ -26,8 +31,11 @@ data Cell = Cell
 newCell :: Int -> Cell
 newCell number = Cell{input = "", output = Nothing, ..}
 
-evaluateCell :: Cell -> IO Cell
-evaluateCell c = pure $ c & #output ?~ c.input
+evaluateCell :: MVar Text -> MVar Text -> Cell -> IO Cell
+evaluateCell i o c = do
+    putMVar i c.input
+    output <- readMVar o
+    pure $ c & #output ?~ output
 
 cell
     :: forall t m
@@ -42,16 +50,18 @@ cell
        , HasLayout t m
        , MonadHold t m
        )
-    => Cell
+    => MVar Text
+    -> MVar Text
+    -> Cell
     -> m (Event t Cell)
-cell c = do
+cell i o c = do
     update <- grout (fixed $ pure 1) $ row $ do
         let ps1 = "[" <> tshow c.number <> "]: "
         grout (fixed $ pure $ Text.length ps1) $ text $ pure ps1
         TextInput{..} <- grout flex $ textInput def{_textInputConfig_initialValue = TZ.fromText c.input}
         let edited = set #input <$> _textInput_value <*> pure c
         onEnter :: Event t Cell <- tagPromptlyDyn edited <$> enterPressed
-        let evaluated = unsafePerformIO . evaluateCell <$> onEnter
+        let evaluated = unsafePerformIO . evaluateCell i o <$> onEnter
         pure $ leftmost [evaluated, updated edited]
     forM_ c.output $ \(o :: Text) -> do
         grout (fixed $ pure 1) $ row $ do
@@ -79,16 +89,28 @@ notebook
        , HasLayout t m
        , MonadHold t m
        )
-    => Notebook
+    => MVar Text
+    -> MVar Text
+    -> Notebook
     -> m (Event t Notebook)
-notebook n = do
-    cellUpdate :: Event t (Int, Cell) <- leftmost . functorMapToList <$> mapM cell n.cells
+notebook i o n = do
+    cellUpdate :: Event t (Int, Cell) <- leftmost . functorMapToList <$> mapM (cell i o) n.cells
     pure $ cellUpdate <&> (\(i, c) -> n & #cells %~ Map.insert i c)
 
+echoServer :: MVar Text -> MVar Text -> IO ()
+echoServer i o = forever $ do
+    incomingText <- readMVar i
+    let oche = Text.reverse incomingText
+    putMVar o oche
+
 someFunc :: IO ()
-someFunc = mainWidget $ initManager_ $ mdo
-    dn <- holdDyn newNotebook u
-    n <- sample $ current dn
-    u <- notebook n
-    grout flex $ text $ tshow <$> current dn
-    void <$> ctrldPressed
+someFunc = do
+    i <- newMVar Text.empty
+    o <- newMVar Text.empty
+    _ <- forkIO $ echoServer i o
+    mainWidget $ initManager_ $ mdo
+        dn <- holdDyn newNotebook u
+        n <- sample $ current dn
+        u <- notebook i o n
+        grout flex $ text $ tshow <$> current dn
+        void <$> ctrldPressed
