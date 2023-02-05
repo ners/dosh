@@ -29,7 +29,7 @@ newCell number = Cell{input = "", output = Nothing, ..}
 evaluateCell :: MVar Text -> MVar Text -> Cell -> IO Cell
 evaluateCell i o c = do
     putMVar i c.input
-    output <- readMVar o
+    output <- takeMVar o
     pure $ c & #output ?~ output
 
 cell
@@ -94,14 +94,14 @@ notebook i o n = do
 
 echoServer :: MVar Text -> MVar Text -> IO ()
 echoServer i o = forever $ do
-    incomingText <- readMVar i
+    incomingText <- takeMVar i
     let oche = Text.reverse incomingText
     putMVar o oche
 
 someFunc :: IO ()
 someFunc = do
-    i <- newMVar Text.empty
-    o <- newMVar Text.empty
+    i <- newEmptyMVar
+    o <- newEmptyMVar
     _ <- forkIO $ echoServer i o
     mainWidget $ initManager_ $ mdo
         dn <- holdDyn newNotebook u
