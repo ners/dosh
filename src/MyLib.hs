@@ -1,14 +1,9 @@
 module MyLib (someFunc) where
 
 import Control.Concurrent
-import Control.Concurrent (newMVar, threadDelay)
 import Control.Monad
-import Control.Monad (forM_, forever)
 import Control.Monad.Fix (MonadFix)
 import Control.Monad.IO.Class
-import Control.Monad.IO.Class (MonadIO, liftIO)
-import Data.Function qualified as Text
-import Data.Functor (void)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Text (Text)
@@ -63,9 +58,9 @@ cell i o c = do
         onEnter :: Event t Cell <- tagPromptlyDyn edited <$> enterPressed
         let evaluated = unsafePerformIO . evaluateCell i o <$> onEnter
         pure $ leftmost [evaluated, updated edited]
-    forM_ c.output $ \(o :: Text) -> do
+    forM_ c.output $ \(output :: Text) -> do
         grout (fixed $ pure 1) $ row $ do
-            grout flex $ text $ pure o
+            grout flex $ text $ pure output
     pure update
 
 data Notebook = Notebook
@@ -95,7 +90,7 @@ notebook
     -> m (Event t Notebook)
 notebook i o n = do
     cellUpdate :: Event t (Int, Cell) <- leftmost . functorMapToList <$> mapM (cell i o) n.cells
-    pure $ cellUpdate <&> (\(i, c) -> n & #cells %~ Map.insert i c)
+    pure $ cellUpdate <&> (\(number, c) -> n & #cells %~ Map.insert number c)
 
 echoServer :: MVar Text -> MVar Text -> IO ()
 echoServer i o = forever $ do
