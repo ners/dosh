@@ -12,8 +12,8 @@ import Data.Text.Zipper qualified as TZ
 import GHC.Generics (Generic)
 import Optics
 import Reflex
+import Reflex.ExternalRef
 import Reflex.Vty
-import System.IO.Unsafe (unsafePerformIO)
 import Util
 
 data Cell = Cell
@@ -24,41 +24,60 @@ data Cell = Cell
     deriving stock (Show, Generic)
 
 newCell :: Int -> Cell
-newCell number = Cell{input = "", output = Nothing, ..}
+newCell number =
+    Cell
+        { input = ""
+        , output = Nothing
+        , ..
+        }
 
-evaluateCell :: MVar Text -> MVar Text -> Cell -> IO Cell
+evaluateCell
+    :: forall t m
+     . ( Reflex t
+       , MonadIO m
+       , MonadHold t m
+       )
+    => ExternalRef t Text
+    -> ExternalRef t Text
+    -> Cell
+    -> m (Dynamic t Cell)
 evaluateCell i o c = do
-    putMVar i c.input
-    output <- takeMVar o
-    pure $ c & #output ?~ output
+    writeExternalRef i c.input
+    externalRefDynamic o <&&> \o' -> c & #output ?~ o'
 
 cell
     :: forall t m
      . ( MonadIO m
        , Reflex t
-       , HasInput t m
-       , MonadFix m
-       , HasImageWriter t m
-       , HasTheme t m
        , HasFocusReader t m
-       , HasDisplayRegion t m
+       , HasImageWriter t m
+       , HasInput t m
        , HasLayout t m
+       , HasDisplayRegion t m
+       , MonadFix m
+       , HasTheme t m
        , MonadHold t m
+       , PerformEvent t m
+       , MonadIO (Performable m)
+       , MonadHold t (Performable m)
        )
-    => MVar Text
-    -> MVar Text
+    => ExternalRef t Text
+    -> ExternalRef t Text
     -> Cell
     -> m (Event t Cell)
 cell i o c = do
     update <- grout (fixed $ pure 1) $ row $ do
-        let ps1 = "[" <> tshow c.number <> "]: "
+        let ps1 = "In[" <> tshow c.number <> "]: "
         grout (fixed $ pure $ Text.length ps1) $ text $ pure ps1
         TextInput{..} <- grout flex $ textInput def{_textInputConfig_initialValue = TZ.fromText c.input}
         let edited = set #input <$> _textInput_value <*> pure c
         onEnter :: Event t Cell <- tagPromptlyDyn edited <$> enterPressed
-        let evaluated = unsafePerformIO . evaluateCell i o <$> onEnter
-        pure $ leftmost [evaluated, updated edited]
+        evaluated :: Event t (Event t Cell) <- updated <$$> performEvent (evaluateCell i o <$> onEnter)
+        evaluated' <- switchHold never evaluated
+        pure $ leftmost [evaluated', updated edited]
     forM_ c.output $ \(output :: Text) -> do
+        let ps1 = "Out[" <> tshow c.number <> "]: "
+        grout (fixed $ pure $ Text.length ps1) $ text $ pure ps1
         grout (fixed $ pure 1) $ row $ do
             grout flex $ text $ pure output
     pure update
@@ -70,10 +89,15 @@ data Notebook = Notebook
     deriving stock (Show, Generic)
 
 newNotebook :: Notebook
-newNotebook = Notebook{cells = Map.singleton 1 (newCell 1), nextCellNumber = 2}
+newNotebook =
+    Notebook
+        { cells = Map.singleton 1 (newCell 1)
+        , nextCellNumber = 2
+        }
 
 notebook
-    :: ( MonadIO m
+    :: forall t m
+     . ( MonadIO m
        , Reflex t
        , HasInput t m
        , MonadFix m
@@ -83,29 +107,35 @@ notebook
        , HasDisplayRegion t m
        , HasLayout t m
        , MonadHold t m
+       , MonadIO (Performable m)
+       , PerformEvent t m
+       , MonadHold t (Performable m)
        )
-    => MVar Text
-    -> MVar Text
+    => ExternalRef t Text
+    -> ExternalRef t Text
     -> Notebook
     -> m (Event t Notebook)
 notebook i o n = do
     cellUpdate :: Event t (Int, Cell) <- leftmost . functorMapToList <$> mapM (cell i o) n.cells
     pure $ cellUpdate <&> (\(number, c) -> n & #cells %~ Map.insert number c)
 
-echoServer :: MVar Text -> MVar Text -> IO ()
+echoServer
+    :: ExternalRef t Text
+    -> ExternalRef t Text
+    -> IO ()
 echoServer i o = forever $ do
-    incomingText <- takeMVar i
-    let oche = Text.reverse incomingText
-    putMVar o oche
+    incomingText <- readExternalRef i
+    forM_ (Text.inits incomingText) $ \prefix -> do
+        threadDelay 100_000
+        writeExternalRef o prefix
 
 someFunc :: IO ()
-someFunc = do
-    i <- newEmptyMVar
-    o <- newEmptyMVar
-    _ <- forkIO $ echoServer i o
-    mainWidget $ initManager_ $ mdo
+someFunc = mainWidget $ do
+    i <- newExternalRef ""
+    o <- newExternalRef ""
+    _ <- liftIO $ forkIO $ echoServer i o
+    initManager_ $ mdo
         dn <- holdDyn newNotebook u
-        n <- sample $ current dn
-        u <- notebook i o n
+        u <- dyn (notebook i o <$> dn) >>= switchHold never
         grout flex $ text $ tshow <$> current dn
         void <$> ctrldPressed

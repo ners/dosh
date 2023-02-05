@@ -34,8 +34,11 @@ library
     exposed-modules:
         MyLib,
         Util
+    other-modules:
+        Reflex.ExternalRef
     build-depends:
         base,
+        deepseq,
         reflex,
         reflex-vty,
         text,
