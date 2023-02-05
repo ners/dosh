@@ -1,8 +1,9 @@
 module MyLib (someFunc) where
 
-import Control.Monad (forM_)
+import Control.Concurrent (threadDelay)
+import Control.Monad
 import Control.Monad.Fix (MonadFix)
-import Data.Functor (void)
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Text (Text)
@@ -12,6 +13,7 @@ import GHC.Generics (Generic)
 import Optics
 import Reflex
 import Reflex.Vty
+import System.IO.Unsafe (unsafePerformIO)
 import Util
 
 data Cell = Cell
@@ -24,8 +26,12 @@ data Cell = Cell
 newCell :: Int -> Cell
 newCell number = Cell{input = "", output = Nothing, ..}
 
+evaluateCell :: Cell -> IO Cell
+evaluateCell c = pure $ c & #output ?~ c.input
+
 cell
-    :: ( Monad m
+    :: forall t m
+     . ( MonadIO m
        , Reflex t
        , HasInput t m
        , MonadFix m
@@ -39,16 +45,18 @@ cell
     => Cell
     -> m (Event t Cell)
 cell c = do
-    evaluate <- grout (fixed $ pure 1) $ row $ do
+    update <- grout (fixed $ pure 1) $ row $ do
         let ps1 = "[" <> tshow c.number <> "]: "
         grout (fixed $ pure $ Text.length ps1) $ text $ pure ps1
         TextInput{..} <- grout flex $ textInput def{_textInputConfig_initialValue = TZ.fromText c.input}
-        let evaluate = set #input <$> _textInput_value <*> pure c
-        tagPromptlyDyn evaluate <$> enterPressed
+        let edited = set #input <$> _textInput_value <*> pure c
+        onEnter :: Event t Cell <- tagPromptlyDyn edited <$> enterPressed
+        let evaluated = unsafePerformIO . evaluateCell <$> onEnter
+        pure $ leftmost [evaluated, updated edited]
     forM_ c.output $ \(o :: Text) -> do
         grout (fixed $ pure 1) $ row $ do
             grout flex $ text $ pure o
-    pure evaluate
+    pure update
 
 data Notebook = Notebook
     { cells :: Map Int Cell
@@ -60,7 +68,7 @@ newNotebook :: Notebook
 newNotebook = Notebook{cells = Map.singleton 1 (newCell 1), nextCellNumber = 2}
 
 notebook
-    :: ( Monad m
+    :: ( MonadIO m
        , Reflex t
        , HasInput t m
        , MonadFix m
