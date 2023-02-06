@@ -30,10 +30,17 @@
         haskellPackagesOverride = ps: ps.override {
           overrides = self: super:
             with pkgs.haskell.lib;
-            {
+            let ghcVersionAtLeast = lib.versionAtLeast ps.ghc.version; in
+            builtins.trace "GHC version: ${ps.ghc.version}"
+            ({
               dosh = self.callCabal2nix "dosh" src { };
               reflex-vty = doJailbreak (markUnbroken super.reflex-vty);
-            };
+            } // lib.optionalAttrs (ghcVersionAtLeast "9.4") {
+              ghc-syntax-highlighter = super.ghc-syntax-highlighter_0_0_9_0;
+              mmorph = doJailbreak super.mmorph;
+              reflex = doJailbreak super.reflex_0_9_0_0;
+              string-qq = doJailbreak super.string-qq;
+            });
         };
         outputsFor =
           { haskellPackages
