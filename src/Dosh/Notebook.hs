@@ -46,5 +46,5 @@ notebook
     -> Notebook
     -> m (Event t Notebook)
 notebook i o n = do
-    cellUpdate :: Event t (Int, Cell) <- leftmost . functorMapToList <$> mapM (cell i o) n.cells
+    cellUpdate :: Event t (Int, Cell) <- minmost <$> mapM (cell i o) n.cells
     pure $ cellUpdate <&> (\(number, c) -> n & #cells %~ Map.insert number c)

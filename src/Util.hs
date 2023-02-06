@@ -6,7 +6,6 @@ import Data.Text (Text)
 import Data.Text qualified as Text
 import Graphics.Vty hiding (Event)
 import Reflex
-import Reflex.Network (networkView)
 import Reflex.Vty
 
 (<$$>) :: (Functor f, Functor g) => (a -> b) -> f (g a) -> f (g b)
@@ -30,8 +29,8 @@ enterPressed = key KEnter
 shiftEnterPressed :: (Monad m, Reflex t, HasInput t m) => m (Event t KeyCombo)
 shiftEnterPressed = keyCombo (KEnter, [MShift])
 
-functorMapToList :: Functor f => Map a (f b) -> [f (a, b)]
-functorMapToList m = uncurry (fmap . (,)) <$> Map.toList m
-
-dyn :: (NotReady t m, Adjustable t m, PostBuild t m) => Dynamic t (m a) -> m (Event t a)
-dyn = networkView
+-- | Create a new 'Event' that occurs if at least one of the 'Event's in the
+-- map occurs. If multiple occur at the same time the value is the value of the
+-- minimal event.
+minmost :: Reflex t => Map a (Event t b) -> Event t (a, b)
+minmost = maybe never (\(a, eb) -> (a,) <$> eb) . Map.lookupMin

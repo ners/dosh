@@ -10,6 +10,7 @@ import Reflex
 import Reflex.ExternalRef
 import Reflex.Vty
 import Util
+import Reflex.Network (networkView)
 
 echoServer
     :: (Reflex t, MonadIO m, PerformEvent t m, TriggerEvent t m)
@@ -29,6 +30,6 @@ someFunc = mainWidget $ do
     (i, o) <- echoServer
     initManager_ $ mdo
         dn <- holdDyn newNotebook u
-        u <- dyn (notebook i o <$> dn) >>= switchHold never
+        u <- networkView (notebook i o <$> dn) >>= switchHold never
         grout flex $ text $ tshow <$> current dn
         void <$> ctrldPressed
