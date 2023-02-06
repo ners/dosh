@@ -21,10 +21,18 @@ data Exit = Exit deriving (Show, Eq)
 
 -- This creates the MVar with which the FRP network sends the exit signals, and
 -- checks if a response from the FRP networks comes back in the allotted time.
-timeoutWrapperAsync :: (MVar Exit -> IO ()) -> IO (Either () (Maybe Exit))
-timeoutWrapperAsync wrapped = do
+timeoutWrapperAsync :: Int -> (MVar Exit -> IO ()) -> IO (Either () (Maybe Exit))
+timeoutWrapperAsync us wrapped = do
     exitCommMVar :: MVar Exit <- newEmptyMVar
-    race (wrapped exitCommMVar) (timeout 1_000_000 $ takeMVar exitCommMVar)
+    race (wrapped exitCommMVar) (timeout us $ takeMVar exitCommMVar)
+
+withTimeout :: Int -> (MVar Exit -> IO ()) -> Expectation
+withTimeout us wrapped = do
+    result <- timeoutWrapperAsync us wrapped
+    case result of
+        Right (Just Exit) -> pure ()
+        Right Nothing -> expectationFailure "Application did not exit in time"
+        _ -> expectationFailure "Application did not exit successfully"
 
 testCell
     :: forall t m
@@ -43,14 +51,21 @@ testCell
        , MonadHold t m
        , MonadHold t (Performable m)
        )
-    => m (Event t Cell)
-testCell = do
+    => Cell
+    -> m (Event t Cell)
+testCell c = do
     (i, o) <- echoServer
-    cell i o $ newCell 1
+    cell i o c
+
+seconds :: Num a => a -> a
+seconds = (1_000 *) . milliseconds
+
+milliseconds :: Num a => a -> a
+milliseconds = (1_000 *)
 
 evalOnEnterSpec :: Spec
-evalOnEnterSpec = it "evaluates user input on enter" True
-
--- mainWidget $ initManager_ $ do
---    testCell
---    void <$> ctrldPressed
+evalOnEnterSpec = it "evaluates user input on enter" $ withTimeout (seconds 1) $ \exitMVar -> do
+    mainWidget $ do
+        initManager_ $ do
+            ec <- testCell $ newCell 1
+            void <$> ctrldPressed
