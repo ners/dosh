@@ -15,22 +15,15 @@ module Reflex.ExternalRef
     , writeExternalRef
     , modifyExternalRef
     , modifyExternalRef_
-    , modifyExternalRefMaybe
-    , modifyExternalRefMaybe_
-    , modifyExternalRefM
-    , modifyExternalRefM_
-    , modifyExternalRefMaybeM
-    , modifyExternalRefMaybeM_
+    , externalRefEvent
     , externalRefBehavior
     , externalRefDynamic
-    , externalFromDynamic
-    , fmapExternalRef
     )
 where
 
+import Control.Concurrent.MVar
 import Control.DeepSeq
 import Control.Monad.IO.Class
-import Data.IORef
 import GHC.Generics
 import Reflex
 
@@ -42,7 +35,7 @@ import Reflex
  outer world.
 -}
 data ExternalRef t a = ExternalRef
-    { externalRef :: !(IORef a)
+    { externalRef :: !(MVar a)
     -- ^ Storage of value (do not change this by yourself, use helpers)
     , externalEvent :: !(Event t a)
     -- ^ Event that fires when value is changed
@@ -59,156 +52,55 @@ instance NFData (ExternalRef t a) where
                     ()
 
 -- | Creation of external ref in host monad
-newExternalRef :: (MonadIO m, TriggerEvent t m) => a -> m (ExternalRef t a)
-newExternalRef a = do
-    ref <- liftIO $ newIORef a
-    (e, fire) <- newTriggerEvent
-    return $ ExternalRef ref e fire
+newExternalRef :: (MonadIO m, TriggerEvent t m) => m (ExternalRef t a)
+newExternalRef = do
+    externalRef <- liftIO newEmptyMVar
+    (externalEvent, externalFire) <- newTriggerEvent
+    pure ExternalRef{..}
 
 -- | Read current value of external reference
 readExternalRef :: MonadIO m => ExternalRef t a -> m a
-readExternalRef ExternalRef{..} = liftIO $ readIORef externalRef
+readExternalRef = liftIO . takeMVar . externalRef
 
 {- | Write new value to external reference and notify FRP network.
  The function evaluates the value to WNF.
 -}
 writeExternalRef :: MonadIO m => ExternalRef t a -> a -> m ()
 writeExternalRef ExternalRef{..} a = do
-    a `seq` liftIO (writeIORef externalRef a)
+    a `seq` liftIO (putMVar externalRef a)
     _ <- liftIO $ externalFire a
     return ()
 
 {- | Atomically modify an external ref and notify FRP network.
  The function evaluates the value to WNF.
 -}
-modifyExternalRef :: MonadIO m => ExternalRef t a -> (a -> (a, b)) -> m b
-modifyExternalRef ExternalRef{..} f = do
-    (a, b) <- liftIO $ atomicModifyIORef' externalRef $ \a ->
-        let (a', b) = f a in (a', (a', b))
-    _ <- liftIO $ externalFire a
-    return b
+modifyExternalRef :: MonadIO m => ExternalRef t a -> (a -> IO (a, b)) -> m b
+modifyExternalRef ExternalRef{..} f = liftIO $ modifyMVar externalRef $ \a -> do
+    (a', b) <- f a
+    externalFire a'
+    pure (a', b)
 
 {- | Atomically modify an external ref and notify FRP network.
  The function evaluates the value to WNF. Returns nothing
 -}
-modifyExternalRef_ :: MonadIO m => ExternalRef t a -> (a -> a) -> m ()
-modifyExternalRef_ ExternalRef{..} f = do
-    a <- liftIO $ atomicModifyIORef' externalRef $ \a ->
-        let a' = f a in (a', a')
-    liftIO $ externalFire a
-
-{- | If the function evaluates to Just then
- Atomically modify an external ref and notify FRP network.
- The function evaluates the value to WNF.
- Return the Maybe result of function's evaluation
--}
-modifyExternalRefMaybe :: MonadIO m => ExternalRef t a -> (a -> Maybe (a, b)) -> m (Maybe b)
-modifyExternalRefMaybe ExternalRef{..} f = do
-    mab <- liftIO $ atomicModifyIORef' externalRef $ \a ->
-        maybe (a, Nothing) (\ab -> (fst ab, Just ab)) $ f a
-    liftIO $ maybe (pure ()) (externalFire . fst) mab
-    pure $ snd <$> mab
-
-{- | If the function evaluates to Just then
- Atomically modify an external ref and notify FRP network.
- The function evaluates the value to WNF. Returns nothing
- The function discards the result
--}
-modifyExternalRefMaybe_ :: MonadIO m => ExternalRef t a -> (a -> Maybe a) -> m ()
-modifyExternalRefMaybe_ ExternalRef{..} f = do
-    ma <- liftIO $ atomicModifyIORef' externalRef $ \a ->
-        maybe (a, Nothing) (\a' -> (a', Just a')) $ f a
-    liftIO $ maybe (pure ()) externalFire ma
-
-{- | Modify (not atomically) an external ref and notify FRP network.
- The function evaluates the value to WNF.
--}
-modifyExternalRefM :: MonadIO m => ExternalRef t a -> (a -> m (a, b)) -> m b
-modifyExternalRefM ExternalRef{..} f = do
-    a <- liftIO $ readIORef externalRef
-    (a', b) <- f a
-    liftIO $ do
-        writeIORef externalRef a'
-        externalFire a'
-    return b
-
-{- | Modify (not atomically) an external ref and notify FRP network.
- The function evaluates the value to WNF.
--}
-modifyExternalRefM_ :: MonadIO m => ExternalRef t a -> (a -> m a) -> m ()
-modifyExternalRefM_ ExternalRef{..} f = do
-    a <- liftIO $ readIORef externalRef
+modifyExternalRef_ :: MonadIO m => ExternalRef t a -> (a -> IO a) -> m ()
+modifyExternalRef_ ExternalRef{..} f = liftIO $ modifyMVar_ externalRef $ \a -> do
     a' <- f a
-    liftIO $ do
-        writeIORef externalRef a'
-        externalFire a'
+    externalFire a'
+    pure a'
 
-{- | If the function evaluates to Just then
- Modify (not atomically) an external ref and notify FRP network.
- The function evaluates the value to WNF.
--}
-modifyExternalRefMaybeM :: MonadIO m => ExternalRef t a -> (a -> m (Maybe (a, b))) -> m (Maybe b)
-modifyExternalRefMaybeM ExternalRef{..} f = do
-    a <- liftIO $ readIORef externalRef
-    mab <- f a
-    case mab of
-        Nothing -> pure Nothing
-        Just (a', b) -> liftIO $ do
-            writeIORef externalRef a'
-            externalFire a'
-            return $ Just b
-
-{- | If the function evaluates to Just then
- Modify (not atomically) an external ref and notify FRP network.
- The function evaluates the value to WNF.
- The function discards the result
--}
-modifyExternalRefMaybeM_ :: MonadIO m => ExternalRef t a -> (a -> m (Maybe a)) -> m ()
-modifyExternalRefMaybeM_ ExternalRef{..} f = do
-    a <- liftIO $ readIORef externalRef
-    ma <- f a
-    case ma of
-        Nothing -> pure ()
-        Just a' -> liftIO $ do
-            writeIORef externalRef a'
-            externalFire a'
+-- | Get dynamic that tracks value of the internal ref
+externalRefEvent :: (MonadHold t m, MonadIO m) => ExternalRef t a -> m (Event t a)
+externalRefEvent = pure . externalEvent
 
 -- | Construct a behavior from external reference
 externalRefBehavior :: (MonadHold t m, MonadIO m) => ExternalRef t a -> m (Behavior t a)
 externalRefBehavior ExternalRef{..} = do
-    a <- liftIO $ readIORef externalRef
+    a <- liftIO $ takeMVar externalRef
     hold a externalEvent
 
 -- | Get dynamic that tracks value of the internal ref
 externalRefDynamic :: (MonadHold t m, MonadIO m) => ExternalRef t a -> m (Dynamic t a)
 externalRefDynamic ExternalRef{..} = do
-    a <- liftIO $ readIORef externalRef
+    a <- liftIO $ takeMVar externalRef
     holdDyn a externalEvent
-
-{- | Create external ref that tracks content of dynamic. Editing of the ref
- has no effect on the original dynamic.
--}
-externalFromDynamic
-    :: (MonadHold t m, TriggerEvent t m, PerformEvent t m, Reflex t, MonadIO m, MonadIO (Performable m))
-    => Dynamic t a
-    -> m (ExternalRef t a)
-externalFromDynamic da = do
-    a0 <- sample . current $ da
-    r <- newExternalRef a0
-    performEvent_ $ writeExternalRef r <$> updated da
-    pure r
-
-{- | Creates external ref as a result of "fmapping" a function to the original ref.
- ExternalRef t is not a true Functior, since it requres monadic action to "fmap"
- Editing of the new ref has no effect on the original dynamic.
--}
-fmapExternalRef
-    :: (MonadIO m, TriggerEvent t m, PerformEvent t m, MonadIO (Performable m))
-    => (a -> b)
-    -> ExternalRef t a
-    -> m (ExternalRef t b)
-fmapExternalRef f ea = do
-    v0 <- readExternalRef ea
-    r <- newExternalRef $ f v0
-    performEvent_ $ writeExternalRef r . f <$> externalEvent ea
-    pure r

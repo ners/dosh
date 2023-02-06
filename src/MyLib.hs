@@ -12,20 +12,21 @@ import Reflex.Vty
 import Util
 
 echoServer
-    :: ExternalRef t Text
-    -> ExternalRef t Text
-    -> IO ()
-echoServer i o = forever $ do
-    incomingText <- readExternalRef i
-    forM_ (Text.inits incomingText) $ \prefix -> do
-        threadDelay 100_000
-        writeExternalRef o prefix
+    :: (Reflex t, MonadIO m, PerformEvent t m, TriggerEvent t m)
+    => m (ExternalRef t Text, ExternalRef t Text)
+echoServer = do
+    i <- newExternalRef
+    o <- newExternalRef
+    void $ liftIO $ forkIO $ forever $ do
+        incomingText <- readExternalRef i
+        forM_ (Text.inits incomingText) $ \prefix -> do
+            writeExternalRef o prefix
+            liftIO $ threadDelay 100_000
+    pure (i, o)
 
 someFunc :: IO ()
 someFunc = mainWidget $ do
-    i <- newExternalRef ""
-    o <- newExternalRef ""
-    _ <- liftIO $ forkIO $ echoServer i o
+    (i, o) <- echoServer
     initManager_ $ mdo
         dn <- holdDyn newNotebook u
         u <- dyn (notebook i o <$> dn) >>= switchHold never

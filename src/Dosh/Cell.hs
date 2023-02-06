@@ -48,7 +48,7 @@ evaluateCell i o ec = do
     eval :: Cell -> Performable m (Event t Cell)
     eval c = do
         writeExternalRef i c.input
-        et :: Event t Text <- updated <$> externalRefDynamic o
+        et :: Event t Text <- externalRefEvent o
         pure $ et <&> \t -> c & #output ?~ t
 
 cell
