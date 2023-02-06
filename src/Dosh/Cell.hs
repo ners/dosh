@@ -8,11 +8,11 @@ import Data.Generics.Labels ()
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.Zipper qualified as TZ
+import Dosh.Util
 import GHC.Generics (Generic)
 import Reflex
 import Reflex.ExternalRef
 import Reflex.Vty
-import Util
 
 data Cell = Cell
     { number :: Int

@@ -38,6 +38,7 @@
             builtins.trace "GHC version: ${ps.ghc.version}"
               ({
                 dosh = self.callCabal2nix "dosh" src { };
+                reflex-process = doJailbreak super.reflex-process;
                 reflex-vty = self.callCabal2nix "reflex-vty" inputs.reflex-vty { };
               } // lib.optionalAttrs (ghcVersionAtLeast "9.4") {
                 ghc-syntax-highlighter = super.ghc-syntax-highlighter_0_0_9_0;

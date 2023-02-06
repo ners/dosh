@@ -1,29 +1,11 @@
 module MyLib (someFunc) where
 
-import Control.Concurrent
 import Control.Monad
-import Control.Monad.IO.Class
-import Data.Text (Text)
-import Data.Text qualified as Text
 import Dosh.Notebook
+import Dosh.Util
 import Reflex
-import Reflex.ExternalRef
-import Reflex.Vty
-import Util
 import Reflex.Network (networkView)
-
-echoServer
-    :: (Reflex t, MonadIO m, PerformEvent t m, TriggerEvent t m)
-    => m (ExternalRef t Text, ExternalRef t Text)
-echoServer = do
-    i <- newExternalRef
-    o <- newExternalRef
-    void $ liftIO $ forkIO $ forever $ do
-        incomingText <- readExternalRef i
-        forM_ (Text.inits incomingText) $ \prefix -> do
-            writeExternalRef o prefix
-            liftIO $ threadDelay 100_000
-    pure (i, o)
+import Reflex.Vty
 
 someFunc :: IO ()
 someFunc = mainWidget $ do

@@ -7,11 +7,11 @@ import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Text (Text)
 import Dosh.Cell
+import Dosh.Util
 import GHC.Generics (Generic)
 import Reflex
 import Reflex.ExternalRef
 import Reflex.Vty
-import Util
 
 data Notebook = Notebook
     { cells :: Map Int Cell
