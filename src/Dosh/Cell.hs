@@ -24,29 +24,37 @@ data Cell = Cell
 newCell :: Int -> Cell
 newCell number =
     Cell
-        { input = ""
+        { number
+        , input = ""
         , output = Nothing
-        , ..
         }
 
 evaluateCell
     :: forall t m
      . ( Reflex t
-       , MonadIO m
+       , PerformEvent t m
        , MonadHold t m
+       , MonadIO (Performable m)
+       , MonadHold t (Performable m)
        )
     => ExternalRef t Text
     -> ExternalRef t Text
-    -> Cell
-    -> m (Dynamic t Cell)
-evaluateCell i o c = do
-    writeExternalRef i c.input
-    externalRefDynamic o <&&> \o' -> c & #output ?~ o'
+    -> Event t Cell
+    -> m (Event t Cell)
+evaluateCell i o ec = do
+    evaluate <- performEvent $ eval <$> ec
+    switchHold never evaluate
+  where
+    eval :: Cell -> Performable m (Event t Cell)
+    eval c = do
+        writeExternalRef i c.input
+        et :: Event t Text <- updated <$> externalRefDynamic o
+        pure $ et <&> \t -> c & #output ?~ t
 
 cell
     :: forall t m
-     . ( MonadIO m
-       , Reflex t
+     . ( Reflex t
+       , PerformEvent t m
        , HasFocusReader t m
        , HasImageWriter t m
        , HasInput t m
@@ -55,7 +63,6 @@ cell
        , MonadFix m
        , HasTheme t m
        , MonadHold t m
-       , PerformEvent t m
        , MonadIO (Performable m)
        , MonadHold t (Performable m)
        )
@@ -70,9 +77,8 @@ cell i o c = do
         TextInput{..} <- grout flex $ textInput def{_textInputConfig_initialValue = TZ.fromText c.input}
         let edited = set #input <$> _textInput_value <*> pure c
         onEnter :: Event t Cell <- tagPromptlyDyn edited <$> enterPressed
-        evaluated :: Event t (Event t Cell) <- updated <$$> performEvent (evaluateCell i o <$> onEnter)
-        evaluated' <- switchHold never evaluated
-        pure $ leftmost [evaluated', updated edited]
+        evaluated :: Event t Cell <- evaluateCell i o onEnter
+        pure $ leftmost [evaluated, updated edited]
     forM_ c.output $ \(output :: Text) -> do
         let ps1 = "Out[" <> tshow c.number <> "]: "
         grout (fixed $ pure $ Text.length ps1) $ text $ pure ps1

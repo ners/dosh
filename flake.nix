@@ -7,6 +7,10 @@
       url = "github:edolstra/flake-compat";
       flake = false;
     };
+    reflex-vty = {
+      url = "github:ners/reflex-vty/patch-1";
+      flake = false;
+    };
   };
 
   outputs = inputs: inputs.flake-utils.lib.eachDefaultSystem
@@ -32,15 +36,15 @@
             with pkgs.haskell.lib;
             let ghcVersionAtLeast = lib.versionAtLeast ps.ghc.version; in
             builtins.trace "GHC version: ${ps.ghc.version}"
-            ({
-              dosh = self.callCabal2nix "dosh" src { };
-              reflex-vty = doJailbreak (markUnbroken super.reflex-vty);
-            } // lib.optionalAttrs (ghcVersionAtLeast "9.4") {
-              ghc-syntax-highlighter = super.ghc-syntax-highlighter_0_0_9_0;
-              mmorph = doJailbreak super.mmorph;
-              reflex = doJailbreak super.reflex_0_9_0_0;
-              string-qq = doJailbreak super.string-qq;
-            });
+              ({
+                dosh = self.callCabal2nix "dosh" src { };
+                reflex-vty = self.callCabal2nix "reflex-vty" inputs.reflex-vty { };
+              } // lib.optionalAttrs (ghcVersionAtLeast "9.4") {
+                ghc-syntax-highlighter = super.ghc-syntax-highlighter_0_0_9_0;
+                mmorph = doJailbreak super.mmorph;
+                reflex = doJailbreak super.reflex_0_9_0_0;
+                string-qq = doJailbreak super.string-qq;
+              });
         };
         outputsFor =
           { haskellPackages
@@ -54,10 +58,11 @@
             devShells.${name} = ps.shellFor {
               packages = ps: [ ps.dosh ];
               withHoogle = true;
-              nativeBuildInputs = with ps; [
+              nativeBuildInputs = with pkgs; with ps; [
                 cabal-install
                 fourmolu
                 haskell-language-server
+                nixpkgs-fmt
               ];
             };
           };

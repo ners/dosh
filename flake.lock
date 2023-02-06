@@ -62,12 +62,30 @@
         "type": "github"
       }
     },
+    "reflex-vty": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1675689442,
+        "narHash": "sha256-PYeCZfKgFIGBRFG40uUH1RZ4rzm0rWq4cWpPQwxV8iw=",
+        "owner": "ners",
+        "repo": "reflex-vty",
+        "rev": "6d0d4b8d99fec61cd5f8cf4b1ff73407b89de03a",
+        "type": "github"
+      },
+      "original": {
+        "owner": "ners",
+        "ref": "patch-1",
+        "repo": "reflex-vty",
+        "type": "github"
+      }
+    },
     "root": {
       "inputs": {
         "flake-compat": "flake-compat",
         "flake-utils": "flake-utils",
         "nix-filter": "nix-filter",
-        "nixpkgs": "nixpkgs"
+        "nixpkgs": "nixpkgs",
+        "reflex-vty": "reflex-vty"
       }
     }
   },

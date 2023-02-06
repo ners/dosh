@@ -28,8 +28,8 @@ newNotebook =
 
 notebook
     :: forall t m
-     . ( MonadIO m
-       , Reflex t
+     . ( Reflex t
+       , PerformEvent t m
        , HasInput t m
        , MonadFix m
        , HasImageWriter t m
@@ -39,7 +39,6 @@ notebook
        , HasLayout t m
        , MonadHold t m
        , MonadIO (Performable m)
-       , PerformEvent t m
        , MonadHold t (Performable m)
        )
     => ExternalRef t Text
