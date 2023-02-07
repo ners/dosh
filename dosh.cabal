@@ -44,6 +44,7 @@ library
         deepseq,
         generic-lens,
         lens,
+        process,
         reflex,
         reflex-process,
         reflex-vty,

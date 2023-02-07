@@ -9,9 +9,9 @@ import Reflex.Vty
 
 someFunc :: IO ()
 someFunc = mainWidget $ do
-    (i, o) <- echoServer
+    io <- echoServer
     initManager_ $ mdo
         dn <- holdDyn newNotebook u
-        u <- networkView (notebook i o <$> dn) >>= switchHold never
+        u <- networkView (notebook io <$> dn) >>= switchHold never
         grout flex $ text $ tshow <$> current dn
         void <$> ctrldPressed

@@ -40,16 +40,24 @@ shiftEnterPressed = keyCombo (KEnter, [MShift])
 minmost :: Reflex t => Map a (Event t b) -> Event t (a, b)
 minmost = maybe never (\(a, eb) -> (a,) <$> eb) . Map.lookupMin
 
+data Message = MessagePart Text | EndOfMessage
+
+data IoServer t = IoServer
+    { i :: ExternalRef t Text
+    , o :: ExternalRef t Message
+    }
+
 echoServer
     :: forall t m
      . (Reflex t, MonadIO m, PerformEvent t m, TriggerEvent t m)
-    => m (ExternalRef t Text, ExternalRef t Text)
+    => m (IoServer t)
 echoServer = do
-    i <- newExternalRef
-    o <- newExternalRef
+    i <- newExternalRef ""
+    o <- newExternalRef EndOfMessage
     void $ liftIO $ forkIO $ forever $ do
         incomingText <- readExternalRef i
-        forM_ (Text.inits incomingText) $ \prefix -> do
-            writeExternalRef o prefix
+        forM_ (Text.singleton <$> Text.unpack incomingText) $ \prefix -> do
             liftIO $ threadDelay 100_000
-    pure (i, o)
+            writeExternalRef o $ MessagePart prefix
+    -- writeExternalRef o EndOfMessage
+    pure IoServer{..}

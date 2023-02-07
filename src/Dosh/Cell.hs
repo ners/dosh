@@ -1,3 +1,5 @@
+{-# LANGUAGE LambdaCase #-}
+
 module Dosh.Cell where
 
 import Control.Lens
@@ -36,20 +38,22 @@ evaluateCell
        , MonadHold t m
        , MonadIO (Performable m)
        , MonadHold t (Performable m)
+       , MonadFix (Performable m)
        )
-    => ExternalRef t Text
-    -> ExternalRef t Text
+    => IoServer t
     -> Event t Cell
     -> m (Event t Cell)
-evaluateCell i o ec = do
-    evaluate <- performEvent $ eval <$> ec
-    switchHold never evaluate
+evaluateCell IoServer{..} ec = do
+    evaluate :: Event t (Dynamic t Cell) <- performEvent $ eval <$> ec
+    switchHold never $ updated <$> evaluate
   where
-    eval :: Cell -> Performable m (Event t Cell)
+    eval :: Cell -> Performable m (Dynamic t Cell)
     eval c = do
         writeExternalRef i c.input
-        et :: Event t Text <- externalRefEvent o
-        pure $ et <&> \t -> c & #output ?~ t
+        dt :: Dynamic t Message <- externalRefDynamic o
+        pure $ dt <&> \case
+            MessagePart t -> c & #output ?~ t
+            EndOfMessage -> c
 
 cell
     :: forall t m
@@ -65,23 +69,23 @@ cell
        , MonadHold t m
        , MonadIO (Performable m)
        , MonadHold t (Performable m)
+       , MonadFix (Performable m)
        )
-    => ExternalRef t Text
-    -> ExternalRef t Text
+    => IoServer t
     -> Cell
     -> m (Event t Cell)
-cell i o c = do
+cell io c = do
     update <- grout (fixed $ pure 1) $ row $ do
         let ps1 = "In[" <> tshow c.number <> "]: "
         grout (fixed $ pure $ Text.length ps1) $ text $ pure ps1
         TextInput{..} <- grout flex $ textInput def{_textInputConfig_initialValue = TZ.fromText c.input}
         let edited = set #input <$> _textInput_value <*> pure c
         onEnter :: Event t Cell <- tagPromptlyDyn edited <$> enterPressed
-        evaluated :: Event t Cell <- evaluateCell i o onEnter
-        pure $ leftmost [evaluated, updated edited]
+        evaluated :: Event t Cell <- evaluateCell io onEnter
+        pure evaluated
     forM_ c.output $ \(output :: Text) -> do
-        let ps1 = "Out[" <> tshow c.number <> "]: "
-        grout (fixed $ pure $ Text.length ps1) $ text $ pure ps1
         grout (fixed $ pure 1) $ row $ do
+            let ps1 = "Out[" <> tshow c.number <> "]: "
+            grout (fixed $ pure $ Text.length ps1) $ text $ pure ps1
             grout flex $ text $ pure output
     pure update

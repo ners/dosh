@@ -5,12 +5,10 @@ import Control.Monad.Fix
 import Control.Monad.IO.Class
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Text (Text)
 import Dosh.Cell
 import Dosh.Util
 import GHC.Generics (Generic)
 import Reflex
-import Reflex.ExternalRef
 import Reflex.Vty
 
 data Notebook = Notebook
@@ -40,11 +38,11 @@ notebook
        , MonadHold t m
        , MonadIO (Performable m)
        , MonadHold t (Performable m)
+       , MonadFix (Performable m)
        )
-    => ExternalRef t Text
-    -> ExternalRef t Text
+    => IoServer t
     -> Notebook
     -> m (Event t Notebook)
-notebook i o n = do
-    cellUpdate :: Event t (Int, Cell) <- minmost <$> mapM (cell i o) n.cells
+notebook io n = do
+    cellUpdate :: Event t (Int, Cell) <- minmost <$> mapM (cell io) n.cells
     pure $ cellUpdate <&> (\(number, c) -> n & #cells %~ Map.insert number c)
