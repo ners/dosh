@@ -35,7 +35,6 @@ library
         MyLib,
         Dosh.Notebook,
         Dosh.Cell,
-        Reflex.ExternalRef,
         Dosh.Util
     build-depends:
         async,
@@ -75,4 +74,5 @@ test-suite dosh-test
         hspec,
         reflex,
         reflex-vty,
-        text
+        text,
+        vty

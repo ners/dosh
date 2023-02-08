@@ -39,6 +39,8 @@ notebook
        , MonadIO (Performable m)
        , MonadHold t (Performable m)
        , MonadFix (Performable m)
+       , PostBuild t m
+       , TriggerEvent t m
        )
     => IoServer t
     -> Notebook

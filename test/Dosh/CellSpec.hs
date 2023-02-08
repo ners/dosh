@@ -2,11 +2,11 @@ module Dosh.CellSpec (spec) where
 
 import Control.Concurrent
 import Control.Concurrent.Async (race)
-import Control.Monad
 import Control.Monad.Fix (MonadFix)
 import Control.Monad.IO.Class
 import Dosh.Cell
 import Dosh.Util
+import Graphics.Vty hiding (Event)
 import Reflex
 import Reflex.Vty
 import System.Timeout (timeout)
@@ -37,6 +37,7 @@ withTimeout us wrapped = do
 testCell
     :: forall t m
      . ( Reflex t
+       , PostBuild t m
        , PerformEvent t m
        , TriggerEvent t m
        , MonadIO m
@@ -46,6 +47,7 @@ testCell
        , HasLayout t m
        , HasDisplayRegion t m
        , MonadFix m
+       , MonadFix (Performable m)
        , HasTheme t m
        , MonadIO (Performable m)
        , MonadHold t m
@@ -54,8 +56,8 @@ testCell
     => Cell
     -> m (Event t Cell)
 testCell c = do
-    (i, o) <- echoServer
-    cell i o c
+    io <- echoServer
+    cell io c
 
 seconds :: Num a => a -> a
 seconds = (1_000 *) . milliseconds
@@ -66,6 +68,11 @@ milliseconds = (1_000 *)
 evalOnEnterSpec :: Spec
 evalOnEnterSpec = it "evaluates user input on enter" $ withTimeout (seconds 1) $ \exitMVar -> do
     mainWidget $ do
+        (keyEv, keyTrigger :: KeyCombo -> IO ()) <- newTriggerEvent
         initManager_ $ do
             ec <- testCell $ newCell 1
-            void <$> ctrldPressed
+            liftIO $ keyTrigger (KChar 'a', [])
+            liftIO $ keyTrigger (KChar 'b', [])
+            liftIO $ keyTrigger (KChar 'c', [])
+            liftIO $ keyTrigger (KEnter, [])
+            pure never

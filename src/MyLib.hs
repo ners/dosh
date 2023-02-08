@@ -8,7 +8,7 @@ import Reflex.Network (networkView)
 import Reflex.Vty
 
 someFunc :: IO ()
-someFunc = mainWidget $ do
+someFunc = mainWidget $ initManager_ $ do
     io <- echoServer
     initManager_ $ mdo
         dn <- holdDyn newNotebook u

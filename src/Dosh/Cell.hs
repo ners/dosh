@@ -13,7 +13,6 @@ import Data.Text.Zipper qualified as TZ
 import Dosh.Util
 import GHC.Generics (Generic)
 import Reflex
-import Reflex.ExternalRef
 import Reflex.Vty
 
 data Cell = Cell
@@ -49,11 +48,9 @@ evaluateCell IoServer{..} ec = do
   where
     eval :: Cell -> Performable m (Dynamic t Cell)
     eval c = do
-        writeExternalRef i c.input
-        dt :: Dynamic t Message <- externalRefDynamic o
-        pure $ dt <&> \case
-            MessagePart t -> c & #output ?~ t
-            EndOfMessage -> c
+        liftIO $ query c.input
+        dt :: Dynamic t Text <- foldDyn (flip mappend) "" response
+        pure $ dt <&> \t -> c & #output ?~ t
 
 cell
     :: forall t m

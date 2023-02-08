@@ -2,18 +2,22 @@ module Dosh.Util where
 
 import Control.Concurrent
 import Control.Monad
+import Control.Monad.Fix
 import Control.Monad.IO.Class
+import Data.Functor
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Graphics.Vty hiding (Event)
 import Reflex
-import Reflex.ExternalRef
 import Reflex.Vty
 
 (<$$>) :: (Functor f, Functor g) => (a -> b) -> f (g a) -> f (g b)
 (<$$>) = fmap . fmap
+
+(<$$) :: (Functor f, Functor g) => w -> f (g b) -> f (g w)
+(<$$) = fmap . (<$)
 
 (<&&>) :: (Functor f, Functor g) => f (g a) -> (a -> b) -> f (g b)
 (<&&>) = flip (<$$>)
@@ -40,24 +44,25 @@ shiftEnterPressed = keyCombo (KEnter, [MShift])
 minmost :: Reflex t => Map a (Event t b) -> Event t (a, b)
 minmost = maybe never (\(a, eb) -> (a,) <$> eb) . Map.lookupMin
 
-data Message = MessagePart Text | EndOfMessage
-
 data IoServer t = IoServer
-    { i :: ExternalRef t Text
-    , o :: ExternalRef t Message
+    { query :: Text -> IO ()
+    , response :: Event t Text
     }
 
 echoServer
     :: forall t m
-     . (Reflex t, MonadIO m, PerformEvent t m, TriggerEvent t m)
+     . (Reflex t, MonadIO m, PerformEvent t m, TriggerEvent t m, MonadIO (Performable m), PostBuild t m, MonadFix m)
     => m (IoServer t)
 echoServer = do
-    i <- newExternalRef ""
-    o <- newExternalRef EndOfMessage
-    void $ liftIO $ forkIO $ forever $ do
-        incomingText <- readExternalRef i
-        forM_ (Text.singleton <$> Text.unpack incomingText) $ \prefix -> do
-            liftIO $ threadDelay 100_000
-            writeExternalRef o $ MessagePart prefix
-    -- writeExternalRef o EndOfMessage
-    pure IoServer{..}
+    (queryEvent, queryTrigger) <- newTriggerEvent
+    (responseEvent, responseTrigger) <- newTriggerEvent
+    performEvent $
+        queryEvent <&> \query -> liftIO $ forkIO $ do
+            forM_ (Text.singleton <$> Text.unpack query) $ \t -> do
+                threadDelay 100_000
+                responseTrigger t
+    pure
+        IoServer
+            { query = queryTrigger
+            , response = responseEvent
+            }
