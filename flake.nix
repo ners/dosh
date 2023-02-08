@@ -19,25 +19,25 @@
       let
         pkgs = inputs.nixpkgs.legacyPackages.${system};
         lib = inputs.nixpkgs.lib;
+        pname = "dosh";
         src = inputs.nix-filter.lib {
           root = ./.;
           include = [
             "app"
             "src"
             "test"
-            "dosh.cabal"
+            "${pname}.cabal"
             "CHANGELOG.md"
             "LICENCE"
           ];
         };
-        removeDots = version: concatStringsSep "" (splitVersion version);
         haskellPackagesOverride = ps: ps.override {
           overrides = self: super:
             with pkgs.haskell.lib;
             let ghcVersionAtLeast = lib.versionAtLeast ps.ghc.version; in
             builtins.trace "GHC version: ${ps.ghc.version}"
               ({
-                dosh = self.callCabal2nix "dosh" src { };
+                dosh = self.callCabal2nix pname src { };
                 reflex-process = doJailbreak super.reflex-process;
                 reflex-vty = self.callCabal2nix "reflex-vty" inputs.reflex-vty { };
               } // lib.optionalAttrs (ghcVersionAtLeast "9.4") {
@@ -50,12 +50,12 @@
         outputsFor =
           { haskellPackages
           , name
-          , package ? ""
+          , pname ? ""
           , ...
           }:
           let ps = haskellPackagesOverride haskellPackages; in
           {
-            packages.${name} = ps.${package} or ps;
+            packages.${name} = ps.${pname} or ps;
             devShells.${name} = ps.shellFor {
               packages = ps: [ ps.dosh ];
               withHoogle = true;
@@ -72,9 +72,9 @@
       with lib;
       foldl' (acc: conf: recursiveUpdate acc (outputsFor conf)) { }
         (mapAttrsToList (name: haskellPackages: { inherit name haskellPackages; }) pkgs.haskell.packages ++ [{
-          haskellPackages = pkgs.haskellPackages;
+          inherit pname;
+          inherit (pkgs) haskellPackages;
           name = "default";
-          package = "dosh";
         }])
     );
 }

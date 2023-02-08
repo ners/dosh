@@ -1,8 +1,5 @@
-{-# LANGUAGE LambdaCase #-}
-
 module Dosh.Cell where
 
-import Control.Lens
 import Control.Monad
 import Control.Monad.Fix
 import Control.Monad.IO.Class
@@ -19,6 +16,7 @@ data Cell = Cell
     { number :: Int
     , input :: Text
     , output :: Maybe Text
+    , disabled :: Bool
     }
     deriving stock (Show, Generic)
 
@@ -28,27 +26,12 @@ newCell number =
         { number
         , input = ""
         , output = Nothing
+        , disabled = False
         }
 
-evaluateCell
-    :: forall t m
-     . ( Reflex t
-       , PerformEvent t m
-       , MonadHold t m
-       , MonadIO (Performable m)
-       , MonadHold t (Performable m)
-       , MonadFix (Performable m)
-       , MonadFix m
-       )
-    => IoServer t
-    -> Event t Cell
-    -> m (Event t Text)
-evaluateCell IoServer{..} ec = do
-    performEvent_ $ eval <$> ec
-    updated <$> foldDyn (flip mappend) "" response
-  where
-    eval :: Cell -> Performable m ()
-    eval = liftIO . query . (.input)
+data CellEvent
+    = UpdateCellInput Text
+    | EvaluateCell
 
 cell
     :: forall t m
@@ -66,24 +49,25 @@ cell
        , MonadHold t (Performable m)
        , MonadFix (Performable m)
        )
-    => IoServer t
-    -> Cell
-    -> m (Event t Cell)
-cell io c = do
+    => Cell
+    -> m (Event t CellEvent)
+cell c = do
+    let inPrompt = "In[" <> tshow c.number <> "]: "
+    let outPrompt = "Out[" <> tshow c.number <> "]: "
     update <- grout (fixed $ pure 1) $ row $ do
-        let ps1 = "In[" <> tshow c.number <> "]: "
-        grout (fixed $ pure $ Text.length ps1) $ text $ pure ps1
-        TextInput{..} <- grout flex $ textInput def{_textInputConfig_initialValue = TZ.fromText c.input}
-        let edited :: Dynamic t Cell
-            edited = set #input <$> _textInput_value <*> pure c
-        onEnter :: Event t Cell <- tagPromptlyDyn edited <$> enterPressed
-        evaluated :: Dynamic t Cell <- do
-            responseDyn :: Dynamic t Text <- evaluateCell io onEnter >>= foldDyn (flip mappend) ""
-            pure $ zipDynWith (#output ?~) responseDyn edited
-        pure $ updated evaluated
+        grout (fixed $ pure $ Text.length inPrompt) $ text $ pure inPrompt
+        if c.disabled
+            then do
+                grout flex $ text $ pure c.input
+                pure never
+            else do
+                TextInput{..} <- grout flex $ textInput def{_textInputConfig_initialValue = TZ.fromText c.input}
+                let updateInput :: Event t CellEvent
+                    updateInput = UpdateCellInput <$> updated _textInput_value
+                evaluate :: Event t CellEvent <- enterPressed $$> EvaluateCell
+                pure $ leftmost [evaluate, updateInput]
     forM_ c.output $ \(output :: Text) -> do
         grout (fixed $ pure 1) $ row $ do
-            let ps1 = "Out[" <> tshow c.number <> "]: "
-            grout (fixed $ pure $ Text.length ps1) $ text $ pure ps1
+            grout (fixed $ pure $ Text.length outPrompt) $ text $ pure outPrompt
             grout flex $ text $ pure output
     pure update

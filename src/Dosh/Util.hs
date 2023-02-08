@@ -16,11 +16,14 @@ import Reflex.Vty
 (<$$>) :: (Functor f, Functor g) => (a -> b) -> f (g a) -> f (g b)
 (<$$>) = fmap . fmap
 
-(<$$) :: (Functor f, Functor g) => w -> f (g b) -> f (g w)
-(<$$) = fmap . (<$)
-
 (<&&>) :: (Functor f, Functor g) => f (g a) -> (a -> b) -> f (g b)
 (<&&>) = flip (<$$>)
+
+(<$$) :: (Functor f, Functor g) => a -> f (g b) -> f (g a)
+(<$$) = fmap . (<$)
+
+($$>) :: (Functor f, Functor g) => f (g a) -> b -> f (g b)
+($$>) = flip (<$$)
 
 tshow :: Show a => a -> Text
 tshow = Text.pack . show
@@ -45,24 +48,33 @@ minmost :: Reflex t => Map a (Event t b) -> Event t (a, b)
 minmost = maybe never (\(a, eb) -> (a,) <$> eb) . Map.lookupMin
 
 data IoServer t = IoServer
-    { query :: Text -> IO ()
-    , response :: Event t Text
+    { query :: (Int, Text) -> IO ()
+    , response :: Event t (Int, Text)
     }
 
 echoServer
     :: forall t m
-     . (Reflex t, MonadIO m, PerformEvent t m, TriggerEvent t m, MonadIO (Performable m), PostBuild t m, MonadFix m)
+     . ( Reflex t
+       , MonadIO m
+       , PerformEvent t m
+       , TriggerEvent t m
+       , MonadIO (Performable m)
+       , PostBuild t m
+       , MonadFix m
+       )
     => m (IoServer t)
 echoServer = do
     (queryEvent, queryTrigger) <- newTriggerEvent
     (responseEvent, responseTrigger) <- newTriggerEvent
-    performEvent $
-        queryEvent <&> \query -> liftIO $ forkIO $ do
-            forM_ (Text.singleton <$> Text.unpack query) $ \t -> do
-                threadDelay 500_000
-                responseTrigger t
+    performEvent $ queryEvent <&> liftIO . forkIO . handler responseTrigger
     pure
         IoServer
             { query = queryTrigger
             , response = responseEvent
             }
+    where
+        handler :: ((Int, Text) -> IO ()) -> (Int, Text) -> IO ()
+        handler responseTrigger (i, query) =
+            forM_ (Text.singleton <$> Text.unpack query) $ \t -> do
+                threadDelay 500_000
+                responseTrigger (i, t)

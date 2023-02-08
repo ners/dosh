@@ -5,6 +5,8 @@ import Control.Monad.Fix
 import Control.Monad.IO.Class
 import Data.Map (Map)
 import Data.Map qualified as Map
+import Data.Maybe (fromMaybe)
+import Data.Text (Text)
 import Dosh.Cell
 import Dosh.Util
 import GHC.Generics (Generic)
@@ -46,5 +48,24 @@ notebook
     -> Notebook
     -> m (Event t Notebook)
 notebook io n = do
-    cellUpdate :: Event t (Int, Cell) <- minmost <$> mapM (cell io) n.cells
-    pure $ cellUpdate <&> (\(number, c) -> n & #cells %~ Map.insert number c)
+    cellEvent :: Event t (Int, CellEvent) <- minmost <$> mapM cell n.cells
+    cellEventHandled <- performEvent $ handleCellEvent io n <$> cellEvent
+    ioResponseHandled <- performEvent $ handleIoResponse n <$> io.response
+    pure $ leftmost [cellEventHandled, ioResponseHandled]
+
+handleCellEvent
+    :: MonadIO m
+    => IoServer t
+    -> Notebook
+    -> (Int, CellEvent)
+    -> m Notebook
+handleCellEvent _ n (i, UpdateCellInput t) = pure $ n & #cells . ix i . #input .~ t
+handleCellEvent io n (i, EvaluateCell) = do
+    liftIO $ io.query (i, n ^. #cells . ix i . #input)
+    pure $
+        n
+            & #cells . ix i . #disabled .~ True
+            & #cells . ix i . #output .~ Nothing
+
+handleIoResponse :: MonadIO m => Notebook -> (Int, Text) -> m Notebook
+handleIoResponse n (i, t) = pure $ n & #cells . ix i . #output %~ (Just . (<> t) . fromMaybe "")
