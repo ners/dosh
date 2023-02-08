@@ -59,7 +59,7 @@ echoServer = do
     performEvent $
         queryEvent <&> \query -> liftIO $ forkIO $ do
             forM_ (Text.singleton <$> Text.unpack query) $ \t -> do
-                threadDelay 100_000
+                threadDelay 500_000
                 responseTrigger t
     pure
         IoServer

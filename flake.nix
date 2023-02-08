@@ -49,7 +49,7 @@
         };
         outputsFor =
           { haskellPackages
-          , name ? "ghc" + removeDots haskellPackages.ghc.version
+          , name
           , package ? ""
           , ...
           }:
@@ -66,23 +66,15 @@
                 nixpkgs-fmt
               ];
             };
+            formatter = pkgs.nixpkgs-fmt;
           };
       in
-      foldl' (acc: conf: lib.recursiveUpdate acc (outputsFor conf))
-        {
-          formatter = pkgs.nixpkgs-fmt;
-        }
-        ([
-          {
-            haskellPackages = pkgs.haskellPackages;
-            name = "default";
-            package = "dosh";
-          }
-        ] ++ lib.pipe pkgs.haskell.packages
-          [
-            attrValues
-            (filter (ps: ps ? ghc))
-            (map (ps: { haskellPackages = ps; }))
-          ])
+      with lib;
+      foldl' (acc: conf: recursiveUpdate acc (outputsFor conf)) { }
+        (mapAttrsToList (name: haskellPackages: { inherit name haskellPackages; }) pkgs.haskell.packages ++ [{
+          haskellPackages = pkgs.haskellPackages;
+          name = "default";
+          package = "dosh";
+        }])
     );
 }

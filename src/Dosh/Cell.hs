@@ -38,19 +38,17 @@ evaluateCell
        , MonadIO (Performable m)
        , MonadHold t (Performable m)
        , MonadFix (Performable m)
+       , MonadFix m
        )
     => IoServer t
     -> Event t Cell
-    -> m (Event t Cell)
+    -> m (Event t Text)
 evaluateCell IoServer{..} ec = do
-    evaluate :: Event t (Dynamic t Cell) <- performEvent $ eval <$> ec
-    switchHold never $ updated <$> evaluate
+    performEvent_ $ eval <$> ec
+    updated <$> foldDyn (flip mappend) "" response
   where
-    eval :: Cell -> Performable m (Dynamic t Cell)
-    eval c = do
-        liftIO $ query c.input
-        dt :: Dynamic t Text <- foldDyn (flip mappend) "" response
-        pure $ dt <&> \t -> c & #output ?~ t
+    eval :: Cell -> Performable m ()
+    eval = liftIO . query . (.input)
 
 cell
     :: forall t m
@@ -76,10 +74,13 @@ cell io c = do
         let ps1 = "In[" <> tshow c.number <> "]: "
         grout (fixed $ pure $ Text.length ps1) $ text $ pure ps1
         TextInput{..} <- grout flex $ textInput def{_textInputConfig_initialValue = TZ.fromText c.input}
-        let edited = set #input <$> _textInput_value <*> pure c
+        let edited :: Dynamic t Cell
+            edited = set #input <$> _textInput_value <*> pure c
         onEnter :: Event t Cell <- tagPromptlyDyn edited <$> enterPressed
-        evaluated :: Event t Cell <- evaluateCell io onEnter
-        pure evaluated
+        evaluated :: Dynamic t Cell <- do
+            responseDyn :: Dynamic t Text <- evaluateCell io onEnter >>= foldDyn (flip mappend) ""
+            pure $ zipDynWith (#output ?~) responseDyn edited
+        pure $ updated evaluated
     forM_ c.output $ \(output :: Text) -> do
         grout (fixed $ pure 1) $ row $ do
             let ps1 = "Out[" <> tshow c.number <> "]: "
