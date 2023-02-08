@@ -12,7 +12,7 @@ build-type:         Simple
 
 common common
     default-language: GHC2021
-    ghc-options: -Wall -threaded
+    ghc-options: -Wall
     default-extensions:
         ApplicativeDo
         DataKinds
@@ -33,29 +33,46 @@ library
     hs-source-dirs:   src
     exposed-modules:
         MyLib,
-        Util
+        Dosh.Notebook,
+        Dosh.Cell,
+        Dosh.Util
     build-depends:
+        async,
         base,
+        containers,
+        deepseq,
+        generic-lens,
+        lens,
+        process,
         reflex,
+        reflex-process,
         reflex-vty,
         text,
-        vty,
-        optics,
-        containers
+        vty
 
 executable dosh
     import:           common
     main-is:          Main.hs
     hs-source-dirs:   app
+    ghc-options:      -threaded
     build-depends:
         base,
         dosh
 
 test-suite dosh-test
     import:           common
+    ghc-options:      -threaded
     type:             exitcode-stdio-1.0
-    main-is:          Main.hs
+    main-is:          Spec.hs
     hs-source-dirs:   test
+    other-modules:
+        Dosh.CellSpec
     build-depends:
+        async,
         base,
-        dosh
+        dosh,
+        hspec,
+        reflex,
+        reflex-vty,
+        text,
+        vty

@@ -7,6 +7,10 @@
       url = "github:edolstra/flake-compat";
       flake = false;
     };
+    reflex-vty = {
+      url = "github:ners/reflex-vty/patch-1";
+      flake = false;
+    };
   };
 
   outputs = inputs: inputs.flake-utils.lib.eachDefaultSystem
@@ -30,14 +34,22 @@
         haskellPackagesOverride = ps: ps.override {
           overrides = self: super:
             with pkgs.haskell.lib;
-            {
-              dosh = self.callCabal2nix "dosh" src { };
-              reflex-vty = doJailbreak (markUnbroken super.reflex-vty);
-            };
+            let ghcVersionAtLeast = lib.versionAtLeast ps.ghc.version; in
+            builtins.trace "GHC version: ${ps.ghc.version}"
+              ({
+                dosh = self.callCabal2nix "dosh" src { };
+                reflex-process = doJailbreak super.reflex-process;
+                reflex-vty = self.callCabal2nix "reflex-vty" inputs.reflex-vty { };
+              } // lib.optionalAttrs (ghcVersionAtLeast "9.4") {
+                ghc-syntax-highlighter = super.ghc-syntax-highlighter_0_0_9_0;
+                mmorph = doJailbreak super.mmorph;
+                reflex = doJailbreak super.reflex_0_9_0_0;
+                string-qq = doJailbreak super.string-qq;
+              });
         };
         outputsFor =
           { haskellPackages
-          , name ? "ghc" + removeDots haskellPackages.ghc.version
+          , name
           , package ? ""
           , ...
           }:
@@ -47,29 +59,22 @@
             devShells.${name} = ps.shellFor {
               packages = ps: [ ps.dosh ];
               withHoogle = true;
-              nativeBuildInputs = with ps; [
+              nativeBuildInputs = with pkgs; with ps; [
                 cabal-install
                 fourmolu
                 haskell-language-server
+                nixpkgs-fmt
               ];
             };
+            formatter = pkgs.nixpkgs-fmt;
           };
       in
-      foldl' (acc: conf: lib.recursiveUpdate acc (outputsFor conf))
-        {
-          formatter = pkgs.nixpkgs-fmt;
-        }
-        ([
-          {
-            haskellPackages = pkgs.haskellPackages;
-            name = "default";
-            package = "dosh";
-          }
-        ] ++ lib.pipe pkgs.haskell.packages
-          [
-            attrValues
-            (filter (ps: ps ? ghc))
-            (map (ps: { haskellPackages = ps; }))
-          ])
+      with lib;
+      foldl' (acc: conf: recursiveUpdate acc (outputsFor conf)) { }
+        (mapAttrsToList (name: haskellPackages: { inherit name haskellPackages; }) pkgs.haskell.packages ++ [{
+          haskellPackages = pkgs.haskellPackages;
+          name = "default";
+          package = "dosh";
+        }])
     );
 }

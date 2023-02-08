@@ -48,11 +48,11 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1675545634,
-        "narHash": "sha256-TbQeQcM5TA/wIho6xtzG+inUfiGzUXi8ewwttiQWYJE=",
+        "lastModified": 1675673983,
+        "narHash": "sha256-8hzNh1jtiPxL5r3ICNzSmpSzV7kGb3KwX+FS5BWJUTo=",
         "owner": "nixos",
         "repo": "nixpkgs",
-        "rev": "0591d6b57bfeb55dfeec99a671843337bc2c3323",
+        "rev": "5a350a8f31bb7ef0c6e79aea3795a890cf7743d4",
         "type": "github"
       },
       "original": {
@@ -62,12 +62,30 @@
         "type": "github"
       }
     },
+    "reflex-vty": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1675757527,
+        "narHash": "sha256-yMZcnlQOM6vRQwo7VFg1/FYP6vh4/wqVlWVRaryYw7s=",
+        "owner": "ners",
+        "repo": "reflex-vty",
+        "rev": "5ec81f3f2c8e85c482df4a1b04c72214c41bb7a0",
+        "type": "github"
+      },
+      "original": {
+        "owner": "ners",
+        "ref": "patch-1",
+        "repo": "reflex-vty",
+        "type": "github"
+      }
+    },
     "root": {
       "inputs": {
         "flake-compat": "flake-compat",
         "flake-utils": "flake-utils",
         "nix-filter": "nix-filter",
-        "nixpkgs": "nixpkgs"
+        "nixpkgs": "nixpkgs",
+        "reflex-vty": "reflex-vty"
       }
     }
   },
