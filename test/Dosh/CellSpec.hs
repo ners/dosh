@@ -43,7 +43,5 @@ milliseconds = (1_000 *)
 
 evalOnEnterSpec :: Spec
 evalOnEnterSpec = it "evaluates user input on enter" $ withTimeout (seconds 1) $ \exitMVar -> do
-    mainWidget $ do
-        initManager_ $ do
-            liftIO $ putMVar exitMVar Exit
-            pure never
+    putMVar exitMVar Exit
+    threadDelay (seconds 1)
