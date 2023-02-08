@@ -1,15 +1,10 @@
 module Dosh.Util where
 
-import Control.Concurrent
-import Control.Monad
-import Control.Monad.Fix
-import Control.Monad.IO.Class
-import Data.Functor
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Graphics.Vty hiding (Event)
+import Graphics.Vty (Key(..), Modifier (..))
 import Reflex
 import Reflex.Vty
 
@@ -46,35 +41,3 @@ shiftEnterPressed = keyCombo (KEnter, [MShift])
 -}
 minmost :: Reflex t => Map a (Event t b) -> Event t (a, b)
 minmost = maybe never (\(a, eb) -> (a,) <$> eb) . Map.lookupMin
-
-data IoServer t = IoServer
-    { query :: (Int, Text) -> IO ()
-    , response :: Event t (Int, Text)
-    }
-
-echoServer
-    :: forall t m
-     . ( Reflex t
-       , MonadIO m
-       , PerformEvent t m
-       , TriggerEvent t m
-       , MonadIO (Performable m)
-       , PostBuild t m
-       , MonadFix m
-       )
-    => m (IoServer t)
-echoServer = do
-    (queryEvent, queryTrigger) <- newTriggerEvent
-    (responseEvent, responseTrigger) <- newTriggerEvent
-    performEvent $ queryEvent <&> liftIO . forkIO . handler responseTrigger
-    pure
-        IoServer
-            { query = queryTrigger
-            , response = responseEvent
-            }
-    where
-        handler :: ((Int, Text) -> IO ()) -> (Int, Text) -> IO ()
-        handler responseTrigger (i, query) =
-            forM_ (Text.singleton <$> Text.unpack query) $ \t -> do
-                threadDelay 500_000
-                responseTrigger (i, t)

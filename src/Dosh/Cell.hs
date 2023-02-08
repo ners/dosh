@@ -31,7 +31,8 @@ newCell number =
 
 data CellEvent
     = UpdateCellInput Text
-    | EvaluateCell
+    | EvaluateCell Text
+    deriving stock (Show)
 
 cell
     :: forall t m
@@ -54,7 +55,7 @@ cell
 cell c = do
     let inPrompt = "In[" <> tshow c.number <> "]: "
     let outPrompt = "Out[" <> tshow c.number <> "]: "
-    update <- grout (fixed $ pure 1) $ row $ do
+    inputEvent <- grout (fixed $ pure 1) $ row $ do
         grout (fixed $ pure $ Text.length inPrompt) $ text $ pure inPrompt
         if c.disabled
             then do
@@ -62,12 +63,12 @@ cell c = do
                 pure never
             else do
                 TextInput{..} <- grout flex $ textInput def{_textInputConfig_initialValue = TZ.fromText c.input}
-                let updateInput :: Event t CellEvent
-                    updateInput = UpdateCellInput <$> updated _textInput_value
-                evaluate :: Event t CellEvent <- enterPressed $$> EvaluateCell
-                pure $ leftmost [evaluate, updateInput]
+                -- let updateInput :: Event t CellEvent
+                --    updateInput = UpdateCellInput <$> updated _textInput_value
+                evaluate :: Event t CellEvent <- EvaluateCell <$$> tagPromptlyDyn _textInput_value <$> enterPressed
+                pure $ leftmost [evaluate]
     forM_ c.output $ \(output :: Text) -> do
         grout (fixed $ pure 1) $ row $ do
             grout (fixed $ pure $ Text.length outPrompt) $ text $ pure outPrompt
             grout flex $ text $ pure output
-    pure update
+    pure inputEvent

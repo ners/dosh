@@ -32,10 +32,11 @@ library
     import:           common
     hs-source-dirs:   src
     exposed-modules:
-        MyLib,
-        Dosh.Notebook,
         Dosh.Cell,
-        Dosh.Util
+        Dosh.Notebook,
+        Dosh.Server,
+        Dosh.Util,
+        MyLib
     build-depends:
         async,
         base,

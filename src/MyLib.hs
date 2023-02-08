@@ -2,6 +2,7 @@ module MyLib (someFunc) where
 
 import Control.Monad
 import Dosh.Notebook
+import Dosh.Server (echoServer)
 import Dosh.Util
 import Reflex
 import Reflex.Network (networkView)

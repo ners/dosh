@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -Wno-name-shadowing #-}
+
 module Dosh.Notebook where
 
 import Control.Lens
@@ -6,15 +8,16 @@ import Control.Monad.IO.Class
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe)
-import Data.Text (Text)
 import Dosh.Cell
+import Dosh.Server (Query (..), Response (..), Server (..))
 import Dosh.Util
 import GHC.Generics (Generic)
-import Reflex
-import Reflex.Vty
+import Reflex hiding (Query, Response)
+import Reflex.Vty hiding (Query, Response)
 
 data Notebook = Notebook
     { cells :: Map Int Cell
+    , nextCellId :: Int
     , nextCellNumber :: Int
     }
     deriving stock (Show, Generic)
@@ -23,6 +26,7 @@ newNotebook :: Notebook
 newNotebook =
     Notebook
         { cells = Map.singleton 1 (newCell 1)
+        , nextCellId = 2
         , nextCellNumber = 2
         }
 
@@ -44,7 +48,7 @@ notebook
        , PostBuild t m
        , TriggerEvent t m
        )
-    => IoServer t
+    => Server t
     -> Notebook
     -> m (Event t Notebook)
 notebook io n = do
@@ -55,17 +59,20 @@ notebook io n = do
 
 handleCellEvent
     :: MonadIO m
-    => IoServer t
+    => Server t
     -> Notebook
     -> (Int, CellEvent)
     -> m Notebook
-handleCellEvent _ n (i, UpdateCellInput t) = pure $ n & #cells . ix i . #input .~ t
-handleCellEvent io n (i, EvaluateCell) = do
-    liftIO $ io.query (i, n ^. #cells . ix i . #input)
+handleCellEvent _ n (id, UpdateCellInput t) = pure $ n & #cells . ix id . #input .~ t
+handleCellEvent io n (id, EvaluateCell content) = do
+    liftIO $ io.query Query{..}
     pure $
         n
-            & #cells . ix i . #disabled .~ True
-            & #cells . ix i . #output .~ Nothing
+            & #cells . ix id . #disabled .~ True
+            & #cells . ix id . #input .~ content
+            & #cells . ix id . #output .~ Nothing
 
-handleIoResponse :: MonadIO m => Notebook -> (Int, Text) -> m Notebook
-handleIoResponse n (i, t) = pure $ n & #cells . ix i . #output %~ (Just . (<> t) . fromMaybe "")
+handleIoResponse :: MonadIO m => Notebook -> Response -> m Notebook
+handleIoResponse n r@EndResponse{} = pure $ n & #cells . ix r.id . #disabled .~ False
+handleIoResponse n r@FullResponse{} = pure $ n & #cells . ix r.id . #output ?~ r.content
+handleIoResponse n r@PartialResponse{} = pure $ n & #cells . ix r.id . #output %~ (Just . (<> r.content) . fromMaybe "")
