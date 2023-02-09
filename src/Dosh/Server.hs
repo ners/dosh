@@ -33,10 +33,9 @@ data Server t = Server
     , respond :: Response -> IO ()
     }
 
-server :: (Reflex t, MonadIO m, TriggerEvent t m) => (Server t -> m ()) -> m (Client t)
+server :: (Reflex t, MonadIO m, TriggerEvent t m) => (Server t -> m a) -> m (Client t)
 server handler = do
     (onQuery, query) <- newTriggerEvent
     (onResponse, respond) <- newTriggerEvent
     handler Server{..}
     pure Client{..}
-

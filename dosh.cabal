@@ -44,13 +44,17 @@ library
         containers,
         deepseq,
         generic-lens,
+        ghcide,
         haskell-language-server,
+        hls-plugin-api,
         lens,
+        lsp,
         process,
         reflex,
         reflex-process,
         reflex-vty,
         text,
+        unliftio-core,
         vty
 
 executable dosh
