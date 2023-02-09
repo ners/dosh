@@ -9,7 +9,7 @@ import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe)
 import Dosh.Cell
-import Dosh.Server (Query (..), Response (..), Server (..))
+import Dosh.Server (Client (..), Query (..), Response (..))
 import Dosh.Util
 import GHC.Generics (Generic)
 import Reflex hiding (Query, Response)
@@ -30,6 +30,13 @@ newNotebook =
         , nextCellNumber = 2
         }
 
+createCell :: Notebook -> Notebook
+createCell n =
+    n
+        & #cells . at n.nextCellId ?~ newCell n.nextCellNumber
+        & #nextCellId %~ (+ 1)
+        & #nextCellNumber %~ (+ 1)
+
 notebook
     :: forall t m
      . ( Reflex t
@@ -48,31 +55,36 @@ notebook
        , PostBuild t m
        , TriggerEvent t m
        )
-    => Server t
+    => Client t
     -> Notebook
     -> m (Event t Notebook)
 notebook io n = do
-    cellEvent :: Event t (Int, CellEvent) <- minmost <$> mapM cell n.cells
-    cellEventHandled <- performEvent $ handleCellEvent io n <$> cellEvent
-    ioResponseHandled <- performEvent $ handleIoResponse n <$> io.response
-    pure $ leftmost [cellEventHandled, ioResponseHandled]
+    cellEvents :: Event t (Map Int CellEvent) <- mergeMap <$> mapM cell n.cells
+    cellUpdates <- performEvent $ Map.traverseWithKey (handleCellEvent io) <$> cellEvents
+    let ioUpdates :: Event t (Map Int (Cell -> Cell))
+        ioUpdates = uncurry Map.singleton . handleIoResponse <$> io.onResponse
+        allUpdates = mergeWith (Map.unionWith (.)) [cellUpdates, ioUpdates]
+    pure $ (n &) . over #cells . transformMap <$> allUpdates
 
 handleCellEvent
-    :: MonadIO m
-    => Server t
-    -> Notebook
-    -> (Int, CellEvent)
-    -> m Notebook
-handleCellEvent _ n (id, UpdateCellInput t) = pure $ n & #cells . ix id . #input .~ t
-handleCellEvent io n (id, EvaluateCell content) = do
+    :: forall t m
+     . MonadIO m
+    => Client t
+    -> Int
+    -> CellEvent
+    -> m (Cell -> Cell)
+handleCellEvent _ _ (UpdateCellInput content) = pure $ #input .~ content
+handleCellEvent io id (EvaluateCell content) = do
     liftIO $ io.query Query{..}
-    pure $
-        n
-            & #cells . ix id . #disabled .~ True
-            & #cells . ix id . #input .~ content
-            & #cells . ix id . #output .~ Nothing
+    handleCellEvent io id (UpdateCellInput content) <&> \updateInput cell ->
+        updateInput cell
+            & #output .~ Nothing
+            & #disabled .~ True
+            & filtered evaluated %~ #number %~ (+1)
+            & #evaluated .~ True
 
-handleIoResponse :: MonadIO m => Notebook -> Response -> m Notebook
-handleIoResponse n r@EndResponse{} = pure $ n & #cells . ix r.id . #disabled .~ False
-handleIoResponse n r@FullResponse{} = pure $ n & #cells . ix r.id . #output ?~ r.content
-handleIoResponse n r@PartialResponse{} = pure $ n & #cells . ix r.id . #output %~ (Just . (<> r.content) . fromMaybe "")
+handleIoResponse :: Response -> (Int, Cell -> Cell)
+handleIoResponse r = (r.id,) $ case r of
+    EndResponse{} -> #disabled .~ False
+    FullResponse{} -> #output ?~ r.content
+    PartialResponse{} -> #output %~ (Just . (<> r.content) . fromMaybe "")

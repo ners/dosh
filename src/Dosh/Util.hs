@@ -4,7 +4,7 @@ import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Graphics.Vty (Key(..), Modifier (..))
+import Graphics.Vty (Key (..), Modifier (..))
 import Reflex
 import Reflex.Vty
 
@@ -41,3 +41,13 @@ shiftEnterPressed = keyCombo (KEnter, [MShift])
 -}
 minmost :: Reflex t => Map a (Event t b) -> Event t (a, b)
 minmost = maybe never (\(a, eb) -> (a,) <$> eb) . Map.lookupMin
+
+{- | Given a map of values and a map of value transformations, apply
+ transformations on the intersection of these two maps.
+-}
+transformMap :: Map Int (c -> c) -> Map Int c -> Map Int c
+transformMap =
+    Map.mergeWithKey
+        (const (Just .))
+        (const mempty)
+        id

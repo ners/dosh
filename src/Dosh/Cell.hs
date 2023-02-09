@@ -17,6 +17,7 @@ data Cell = Cell
     , input :: Text
     , output :: Maybe Text
     , disabled :: Bool
+    , evaluated :: Bool
     }
     deriving stock (Show, Generic)
 
@@ -27,6 +28,7 @@ newCell number =
         , input = ""
         , output = Nothing
         , disabled = False
+        , evaluated = False
         }
 
 data CellEvent
@@ -55,7 +57,7 @@ cell
 cell c = do
     let inPrompt = "In[" <> tshow c.number <> "]: "
     let outPrompt = "Out[" <> tshow c.number <> "]: "
-    inputEvent <- grout (fixed $ pure 1) $ row $ do
+    inputEvent <- grout (fixed $ pure $ max 1 $ length $ Text.lines c.input) $ row $ do
         grout (fixed $ pure $ Text.length inPrompt) $ text $ pure inPrompt
         if c.disabled
             then do
@@ -68,7 +70,7 @@ cell c = do
                 evaluate :: Event t CellEvent <- EvaluateCell <$$> tagPromptlyDyn _textInput_value <$> enterPressed
                 pure $ leftmost [evaluate]
     forM_ c.output $ \(output :: Text) -> do
-        grout (fixed $ pure 1) $ row $ do
+        grout (fixed $ pure $ max 1 $ length $ Text.lines output) $ row $ do
             grout (fixed $ pure $ Text.length outPrompt) $ text $ pure outPrompt
             grout flex $ text $ pure output
     pure inputEvent

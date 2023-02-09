@@ -5,7 +5,7 @@ import Control.Concurrent.Async (race)
 import Control.Monad.Fix (MonadFix)
 import Control.Monad.IO.Class
 import Dosh.Cell
-import Dosh.Server (echoServer)
+import Dosh.EchoServer (echoServer)
 import Dosh.Util
 import Graphics.Vty hiding (Event)
 import Reflex

@@ -35,14 +35,16 @@ library
         Dosh.Cell,
         Dosh.Notebook,
         Dosh.Server,
-        Dosh.Util,
-        MyLib
+        Dosh.EchoServer,
+        Dosh.HLS,
+        Dosh.Util
     build-depends:
         async,
         base,
         containers,
         deepseq,
         generic-lens,
+        haskell-language-server,
         lens,
         process,
         reflex,
@@ -58,7 +60,11 @@ executable dosh
     ghc-options:      -threaded
     build-depends:
         base,
-        dosh
+        dosh,
+        generic-lens,
+        lens,
+        reflex,
+        reflex-vty
 
 test-suite dosh-test
     import:           common
