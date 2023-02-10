@@ -1,12 +1,15 @@
 module Dosh.Util where
 
+import Control.Concurrent.Strict
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as Text
+import Data.Text.IO qualified as Text
 import Graphics.Vty (Key (..), Modifier (..))
 import Reflex
 import Reflex.Vty
+import System.IO (Handle, hReady)
 
 (<$$>) :: (Functor f, Functor g) => (a -> b) -> f (g a) -> f (g b)
 (<$$>) = fmap . fmap
@@ -51,3 +54,16 @@ transformMap =
         (const (Just .))
         (const mempty)
         id
+
+getAvailableLines :: Handle -> IO [Text]
+getAvailableLines handle = do
+    hasOutput <- hReady handle
+    if hasOutput
+        then (:) <$> Text.hGetLine handle <*> getAvailableLines handle
+        else pure []
+
+getLines :: Handle -> IO [Text]
+getLines handle =
+    (:)
+        <$> Text.hGetLine handle
+        <*> getAvailableLines handle

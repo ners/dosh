@@ -27,6 +27,16 @@ common common
         RecordWildCards
         RecursiveDo
         TypeFamilies
+    build-depends:
+        async,
+        base,
+        bytestring,
+        data-default,
+        generic-lens,
+        lens,
+        reflex,
+        text,
+        reflex-vty
 
 library
     import:           common
@@ -36,39 +46,37 @@ library
         Dosh.Notebook,
         Dosh.Server,
         Dosh.EchoServer,
-        Dosh.HLS,
+        Dosh.LSP.Server,
+        Dosh.LSP.Client,
         Dosh.Util
     build-depends:
-        async,
-        base,
+        aeson,
         containers,
         deepseq,
-        generic-lens,
         ghcide,
         haskell-language-server,
         hls-plugin-api,
-        lens,
         lsp,
+        lsp-types,
         process,
-        reflex,
-        reflex-process,
-        reflex-vty,
-        text,
-        unliftio-core,
         vty
 
 executable dosh
     import:           common
     main-is:          Main.hs
     hs-source-dirs:   app
-    ghc-options:      -threaded
+    ghc-options:
+        -threaded
+        -rtsopts
+        -with-rtsopts=-N
+        -with-rtsopts=-T
     build-depends:
-        base,
+        aeson,
         dosh,
-        generic-lens,
-        lens,
-        reflex,
-        reflex-vty
+        lsp,
+        lsp-types,
+        process,
+        ghcide
 
 test-suite dosh-test
     import:           common
@@ -79,11 +87,6 @@ test-suite dosh-test
     other-modules:
         Dosh.CellSpec
     build-depends:
-        async,
-        base,
         dosh,
         hspec,
-        reflex,
-        reflex-vty,
-        text,
         vty

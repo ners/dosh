@@ -5,6 +5,8 @@ module Dosh.Server where
 
 import Control.Monad.IO.Class
 import Data.Text (Text)
+import Development.IDE.Main (Log)
+import Development.IDE.Types.Logger (WithPriority)
 import GHC.Generics (Generic)
 import Reflex hiding (Query, Response)
 
@@ -26,16 +28,19 @@ data Response
 data Client t = Client
     { query :: Query -> IO ()
     , onResponse :: Event t Response
+    , onLog :: Event t (WithPriority Log)
     }
 
 data Server t = Server
     { onQuery :: Event t Query
     , respond :: Response -> IO ()
+    , log :: WithPriority Log -> IO ()
     }
 
 server :: (Reflex t, MonadIO m, TriggerEvent t m) => (Server t -> m a) -> m (Client t)
 server handler = do
     (onQuery, query) <- newTriggerEvent
     (onResponse, respond) <- newTriggerEvent
+    (onLog, log) <- newTriggerEvent
     handler Server{..}
     pure Client{..}

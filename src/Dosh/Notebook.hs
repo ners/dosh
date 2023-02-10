@@ -80,7 +80,7 @@ handleCellEvent io id (EvaluateCell content) = do
         updateInput cell
             & #output .~ Nothing
             & #disabled .~ True
-            & filtered evaluated %~ #number %~ (+1)
+            & filtered evaluated %~ #number %~ (+ 1)
             & #evaluated .~ True
 
 handleIoResponse :: Response -> (Int, Cell -> Cell)
