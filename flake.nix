@@ -60,6 +60,12 @@
                 mmorph = doJailbreak super.mmorph;
                 reflex = doJailbreak super.reflex_0_9_0_0;
                 string-qq = doJailbreak super.string-qq;
+              } // lib.optionalAttrs (pkgs.system == "aarch64-darwin") {
+                /* Workaround for nixpkgs#140774 on aarch64-darwin */
+                /* https://github.com/NixOS/nixpkgs/issues/140774#issuecomment-1371565125 */
+                ormolu = pkgs.haskell.lib.compose.overrideCabal {
+                  enableSeparateBinOutput = false;
+                } super.ormolu;
               });
         };
         outputsFor =
