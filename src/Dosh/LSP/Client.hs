@@ -1,56 +1,76 @@
-{-# LANGUAGE PartialTypeSignatures #-}
+{-# LANGUAGE DuplicateRecordFields #-}
+{-# OPTIONS_GHC -Wno-name-shadowing #-}
 
 module Dosh.LSP.Client where
 
-import Data.Aeson (FromJSON, ToJSON, encode)
-import Data.ByteString.Lazy (LazyByteString)
-import Data.ByteString.Lazy qualified as LBS
-import Data.String (fromString)
-import Language.LSP.Types (InitializeParams (..), LspId (..), MessageParams, Method, MethodType (Notification, Request), NotificationMessage (..), RequestMessage (..), SMethod (..))
-import Language.LSP.Types.Capabilities (ClientCapabilities (..))
+import Control.Concurrent (forkIO, newEmptyMVar, putMVar, takeMVar)
+import Control.Monad (forever)
+import Control.Monad.Fix (MonadFix)
+import Control.Monad.IO.Class (MonadIO (liftIO))
+import Data.Functor ((<&>))
+import Data.Text (Text)
+import Dosh.LSP.Server (Server (..))
+import Dosh.Util
+import Language.LSP.Test (Session (..), defaultConfig, fullCaps, request, runSessionWithHandles)
+import Language.LSP.Types
+import Reflex
+    ( Event
+    , MonadHold
+    , PerformEvent
+    , PostBuild
+    , Reflex
+    , TriggerEvent
+    , newTriggerEvent
+    )
+import Reflex.PerformEvent.Class (PerformEvent (..))
+import Prelude hiding (id)
 
-lspEncode :: ToJSON a => a -> LazyByteString
-lspEncode a = header <> content
-  where
-    content = encode a
-    header = fromString $ "Content-Length: " <> show contentLength <> "\r\n\r\n"
-    contentLength = LBS.length content
+data Query = Query
+    { id :: Int
+    , content :: Text
+    }
 
-lspNotification
-    :: forall f m
-     . (ToJSON (MessageParams m), ToJSON (MessageParams m))
-    => SMethod (m :: Method f 'Notification)
-    -> MessageParams m
-    -> LazyByteString
-lspNotification _method _params = lspEncode $ NotificationMessage{_jsonrpc = "2.0", _method, _params}
+data Response
+    = FullResponse {id :: Int, content :: Text}
+    | PartialResponse {id :: Int, content :: Text}
+    | EndResponse {id :: Int}
 
-lspRequest
-    :: forall f m
-     . (ToJSON (MessageParams m), FromJSON (SMethod m))
-    => LspId m
-    -> SMethod (m :: Method f 'Request)
-    -> MessageParams m
-    -> LazyByteString
-lspRequest _id _method _params = lspEncode $ RequestMessage{_jsonrpc = "2.0", ..}
+data Client t = Client
+    { query :: Query -> IO ()
+    , onResponse :: Event t Response
+    }
 
-initialize :: LazyByteString
-initialize =
-    lspRequest (IdInt 0) SInitialize $
-        InitializeParams
-            { _workDoneToken = Nothing
-            , _processId = Nothing
-            , _clientInfo = Nothing
-            , _rootPath = Nothing
-            , _rootUri = Nothing
-            , _initializationOptions = Nothing
-            , _capabilities =
-                ClientCapabilities
-                    { _workspace = Nothing
-                    , _textDocument = Nothing
-                    , _window = Nothing
-                    , _general = Nothing
-                    , _experimental = Nothing
-                    }
-            , _trace = Nothing
-            , _workspaceFolders = Nothing
-            }
+client
+    :: forall t m
+     . ( Reflex t
+       , MonadIO m
+       , PerformEvent t m
+       , TriggerEvent t m
+       , MonadIO (Performable m)
+       , PostBuild t m
+       , MonadFix m
+       , MonadHold t m
+       , PerformEvent t Session
+       , MonadIO (Performable m)
+       )
+    => Server t
+    -> m (Client t)
+client server = do
+    (onQuery, query) <- newTriggerEvent
+    (onResponse, respond) <- newTriggerEvent
+    -- TODO: try to `performEvent` inside `runSessionWithHandles` to get rid of `qvar`
+    qvar <- liftIO newEmptyMVar
+    liftIO $ forkIO $ runSessionWithHandles server.input server.output defaultConfig fullCaps "" $ forever $ do
+        Query{..} <- liftIO $ takeMVar qvar
+        response <- request STextDocumentCodeLens (CodeLensParams Nothing Nothing $ TextDocumentIdentifier $ Uri "")
+        liftIO $ do
+            respond FullResponse{id, content = tshow response._result}
+            respond EndResponse{id}
+    performEvent $ liftIO . putMVar qvar <$> onQuery
+    pure Client{..}
+
+-- instance MonadRef Session where
+--    type Ref Session = Ref IO
+--    newRef = liftIO . newRef
+--    readRef = liftIO . readRef
+--    writeRef r a = liftIO $ writeRef r a

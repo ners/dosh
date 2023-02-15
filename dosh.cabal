@@ -12,7 +12,8 @@ build-type:         Simple
 
 common common
     default-language: GHC2021
-    ghc-options: -Wall
+    ghc-options:
+        -Wall
     default-extensions:
         ApplicativeDo
         DataKinds
@@ -28,37 +29,45 @@ common common
         RecursiveDo
         TypeFamilies
     build-depends:
-        async,
         base,
         bytestring,
         data-default,
         generic-lens,
         lens,
+        lifted-async,
         reflex,
+        reflex-vty,
         text,
-        reflex-vty
+        unliftio
 
 library
     import:           common
     hs-source-dirs:   src
     exposed-modules:
         Dosh.Cell,
-        Dosh.Notebook,
-        Dosh.Server,
-        Dosh.EchoServer,
-        Dosh.LSP.Server,
+        Dosh.GHC.Client,
+        Dosh.GHC.Server,
+        Dosh.GHC.Session,
         Dosh.LSP.Client,
+        Dosh.LSP.Server,
+        Dosh.Notebook,
         Dosh.Util
     build-depends:
-        aeson,
         containers,
         deepseq,
+        exceptions,
+        ghc,
+        ghc-paths,
         ghcide,
         haskell-language-server,
         hls-plugin-api,
+        knob,
         lsp,
+        lsp-test,
         lsp-types,
+        mtl,
         process,
+        ref-tf,
         vty
 
 executable dosh
@@ -71,12 +80,7 @@ executable dosh
         -with-rtsopts=-N
         -with-rtsopts=-T
     build-depends:
-        aeson,
-        dosh,
-        lsp,
-        lsp-types,
-        process,
-        ghcide
+        dosh
 
 test-suite dosh-test
     import:           common
@@ -84,8 +88,6 @@ test-suite dosh-test
     type:             exitcode-stdio-1.0
     main-is:          Spec.hs
     hs-source-dirs:   test
-    other-modules:
-        Dosh.CellSpec
     build-depends:
         dosh,
         hspec,

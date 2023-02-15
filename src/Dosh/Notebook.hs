@@ -9,7 +9,7 @@ import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe)
 import Dosh.Cell
-import Dosh.Server (Client (..), Query (..), Response (..))
+import Dosh.GHC.Client qualified as GHC
 import Dosh.Util
 import GHC.Generics (Generic)
 import Reflex hiding (Query, Response)
@@ -19,6 +19,7 @@ data Notebook = Notebook
     { cells :: Map Int Cell
     , nextCellId :: Int
     , nextCellNumber :: Int
+    , disabled :: Bool
     }
     deriving stock (Show, Generic)
 
@@ -28,6 +29,7 @@ newNotebook =
         { cells = Map.singleton 1 (newCell 1)
         , nextCellId = 2
         , nextCellNumber = 2
+        , disabled = False
         }
 
 createCell :: Notebook -> Notebook
@@ -55,36 +57,36 @@ notebook
        , PostBuild t m
        , TriggerEvent t m
        )
-    => Client t
+    => GHC.Client t
     -> Notebook
     -> m (Event t Notebook)
-notebook io n = do
+notebook ghc n = do
     cellEvents :: Event t (Map Int CellEvent) <- mergeMap <$> mapM cell n.cells
-    cellUpdates <- performEvent $ Map.traverseWithKey (handleCellEvent io) <$> cellEvents
-    let ioUpdates :: Event t (Map Int (Cell -> Cell))
-        ioUpdates = uncurry Map.singleton . handleIoResponse <$> io.onResponse
-        allUpdates = mergeWith (Map.unionWith (.)) [cellUpdates, ioUpdates]
+    cellUpdates <- performEvent $ Map.traverseWithKey (handleCellEvent ghc) <$> cellEvents
+    let ghcUpdates :: Event t (Map Int (Cell -> Cell))
+        ghcUpdates = uncurry Map.singleton . handleGhcResponse <$> ghc.onResponse
+        allUpdates = mergeWith (Map.unionWith (.)) [cellUpdates, ghcUpdates]
     pure $ (n &) . over #cells . transformMap <$> allUpdates
 
 handleCellEvent
     :: forall t m
      . MonadIO m
-    => Client t
+    => GHC.Client t
     -> Int
     -> CellEvent
     -> m (Cell -> Cell)
 handleCellEvent _ _ (UpdateCellInput content) = pure $ #input .~ content
-handleCellEvent io id (EvaluateCell content) = do
-    liftIO $ io.query Query{..}
-    handleCellEvent io id (UpdateCellInput content) <&> \updateInput cell ->
+handleCellEvent ghc id (EvaluateCell content) = do
+    liftIO $ ghc.query GHC.Query{..}
+    handleCellEvent ghc id (UpdateCellInput content) <&> \updateInput cell ->
         updateInput cell
             & #output .~ Nothing
             & #disabled .~ True
             & filtered evaluated %~ #number %~ (+ 1)
             & #evaluated .~ True
 
-handleIoResponse :: Response -> (Int, Cell -> Cell)
-handleIoResponse r = (r.id,) $ case r of
-    EndResponse{} -> #disabled .~ False
-    FullResponse{} -> #output ?~ r.content
-    PartialResponse{} -> #output %~ (Just . (<> r.content) . fromMaybe "")
+handleGhcResponse :: GHC.Response -> (Int, Cell -> Cell)
+handleGhcResponse r = (r.id,) $ case r of
+    GHC.EndResponse{} -> #disabled .~ False
+    GHC.FullResponse{content} -> #output ?~ content
+    GHC.PartialResponse{content} -> #output %~ (Just . (<> content) . fromMaybe "")

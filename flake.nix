@@ -11,8 +11,8 @@
       url = "github:ners/reflex-vty/patch-1";
       flake = false;
     };
-    haskell-language-server = {
-      url = "github:ners/haskell-language-server/patch-1";
+    lsp = {
+      url = "github:ners/lsp";
       flake = false;
     };
   };
@@ -44,17 +44,13 @@
                 dosh = self.callCabal2nix pname src { };
                 reflex-process = doJailbreak super.reflex-process;
                 reflex-vty = self.callCabal2nix "reflex-vty" inputs.reflex-vty { };
-                knob = appendPatch super.knob
+                lsp-test = appendPatches super.lsp-test [
                   (pkgs.fetchpatch {
-                    url = "https://github.com/ners/knob/commit/08312b5dc5214d5a3d6ad1d2463ed9d2736bc266.patch";
-                    hash = "sha256-uNpYfuLuvVPztFoUmPez0FCMy5uI52bn3akIS+QRP9A=";
-                  });
-                ghcide = appendPatch super.ghcide
-                  (pkgs.fetchpatch {
-                    url = "https://github.com/haskell/haskell-language-server/commit/d36ec06382eaa0dfda384da123b0e1328de6853b.patch";
-                    hash = "sha256-+guCHFdE68J5pfzznWpAZmD3lYXBntzXNntIQjYgxt0=";
+                    url = "https://github.com/ners/lsp/commit/ed0b77db3579149110ca1f3e9221fa1e89228a00.patch";
+                    hash = "sha256-K62i/8IqbGzg4iUGONy9u9mVhYeRqOy7tsnCHQqsGus=";
                     stripLen = 1;
-                  });
+                  })
+                ];
               } // lib.optionalAttrs (ghcVersionAtLeast "9.4") {
                 ghc-syntax-highlighter = super.ghc-syntax-highlighter_0_0_9_0;
                 mmorph = doJailbreak super.mmorph;

@@ -1,6 +1,5 @@
 module Dosh.Util where
 
-import Control.Concurrent.Strict
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Text (Text)
@@ -25,6 +24,9 @@ import System.IO (Handle, hReady)
 
 tshow :: Show a => a -> Text
 tshow = Text.pack . show
+
+tread :: Read a => Text -> a
+tread = read . Text.unpack
 
 ctrlcPressed :: (Monad m, Reflex t, HasInput t m) => m (Event t KeyCombo)
 ctrlcPressed = keyCombo (KChar 'c', [MCtrl])
