@@ -1,5 +1,9 @@
 module Dosh.Util where
 
+import Control.Concurrent (threadDelay)
+import Control.Concurrent.Async.Lifted (race_)
+import Control.Monad.Base (liftBase)
+import Control.Monad.Trans.Control (MonadBaseControl)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Text (Text)
@@ -22,11 +26,11 @@ import System.IO (Handle, hReady)
 ($$>) :: (Functor f, Functor g) => f (g a) -> b -> f (g b)
 ($$>) = flip (<$$)
 
-tshow :: Show a => a -> Text
-tshow = Text.pack . show
-
 tread :: Read a => Text -> a
 tread = read . Text.unpack
+
+tshow :: Show a => a -> Text
+tshow = Text.pack . show
 
 ctrlcPressed :: (Monad m, Reflex t, HasInput t m) => m (Event t KeyCombo)
 ctrlcPressed = keyCombo (KChar 'c', [MCtrl])
@@ -39,13 +43,6 @@ enterPressed = key KEnter
 
 shiftEnterPressed :: (Monad m, Reflex t, HasInput t m) => m (Event t KeyCombo)
 shiftEnterPressed = keyCombo (KEnter, [MShift])
-
-{- | Create a new 'Event' that occurs if at least one of the 'Event's in the
- map occurs. If multiple occur at the same time the value is the value of the
- minimal event.
--}
-minmost :: Reflex t => Map a (Event t b) -> Event t (a, b)
-minmost = maybe never (\(a, eb) -> (a,) <$> eb) . Map.lookupMin
 
 {- | Given a map of values and a map of value transformations, apply
  transformations on the intersection of these two maps.
@@ -69,3 +66,10 @@ getLines handle =
     (:)
         <$> Text.hGetLine handle
         <*> getAvailableLines handle
+
+-- | Run two @IO@ actions concurrently.
+-- The loser of the race is 'cancel'led after a delay (in microseconds).
+raceWithDelay_ :: MonadBaseControl IO m => Int -> m a -> m b -> m ()
+raceWithDelay_ d a b = race_ (a <* delay') (b <* delay')
+  where
+    delay' = liftBase $ threadDelay d

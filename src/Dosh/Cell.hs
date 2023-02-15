@@ -11,11 +11,13 @@ import Dosh.Util
 import GHC.Generics (Generic)
 import Reflex
 import Reflex.Vty
+import Data.Maybe (isJust)
 
 data Cell = Cell
     { number :: Int
     , input :: Text
     , output :: Maybe Text
+    , error :: Maybe Text
     , disabled :: Bool
     , evaluated :: Bool
     }
@@ -27,6 +29,7 @@ newCell number =
         { number
         , input = ""
         , output = Nothing
+        , error = Nothing
         , disabled = False
         , evaluated = False
         }
@@ -55,7 +58,7 @@ cell
     => Cell
     -> m (Event t CellEvent)
 cell c = do
-    let inPrompt = "In[" <> tshow c.number <> "]: "
+    let inPrompt = " In[" <> tshow c.number <> "]: "
     let outPrompt = "Out[" <> tshow c.number <> "]: "
     inputEvent <- grout (fixed $ pure $ max 1 $ length $ Text.lines c.input) $ row $ do
         grout (fixed $ pure $ Text.length inPrompt) $ text $ pure inPrompt
@@ -69,8 +72,10 @@ cell c = do
                 --    updateInput = UpdateCellInput <$> updated _textInput_value
                 evaluate :: Event t CellEvent <- EvaluateCell <$$> tagPromptlyDyn _textInput_value <$> enterPressed
                 pure $ leftmost [evaluate]
-    forM_ c.output $ \(output :: Text) -> do
-        grout (fixed $ pure $ max 1 $ length $ Text.lines output) $ row $ do
+    when (isJust c.output || isJust c.error) $
+        grout (fixed $ pure $ max 1 $ maybe 0 (length . Text.lines) (c.output <> c.error)) $ row $ do
             grout (fixed $ pure $ Text.length outPrompt) $ text $ pure outPrompt
-            grout flex $ text $ pure output
+            grout flex $ do
+                mapM_ (text . pure) c.output
+                mapM_ (text . pure) c.error
     pure inputEvent

@@ -81,12 +81,14 @@ handleCellEvent ghc id (EvaluateCell content) = do
     handleCellEvent ghc id (UpdateCellInput content) <&> \updateInput cell ->
         updateInput cell
             & #output .~ Nothing
+            & #error .~ Nothing
             & #disabled .~ True
             & filtered evaluated %~ #number %~ (+ 1)
             & #evaluated .~ True
 
 handleGhcResponse :: GHC.Response -> (Int, Cell -> Cell)
 handleGhcResponse r = (r.id,) $ case r of
-    GHC.EndResponse{} -> #disabled .~ False
     GHC.FullResponse{content} -> #output ?~ content
     GHC.PartialResponse{content} -> #output %~ (Just . (<> content) . fromMaybe "")
+    GHC.Error{error} -> #error ?~ tshow error
+    GHC.EndResponse{} -> #disabled .~ False

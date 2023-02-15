@@ -4,21 +4,22 @@ module Dosh.GHC.Server where
 
 import Control.Arrow ((>>>))
 import Control.Concurrent (forkIO, newEmptyMVar, putMVar, takeMVar)
-import Control.Monad (forM_, forever)
-import Control.Monad.Catch (MonadMask, bracket, catch, SomeException)
+import Control.Monad (forever)
+import Control.Monad.Catch (MonadMask, SomeException, bracket, catch)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Dosh.GHC.Session qualified as GHC
 import GHC (Ghc, runGhc)
-import GHC.IO.Handle (hDuplicate, hDuplicateTo)
+import GHC.IO.Handle (BufferMode (NoBuffering), hDuplicate, hDuplicateTo)
 import GHC.Paths qualified as GHC
 import Reflex
-    ( Reflex, Event, TriggerEvent (newTriggerEvent)
+    ( Event
+    , Reflex
+    , TriggerEvent (newTriggerEvent)
     )
 import System.IO
     ( Handle
     , SeekMode (AbsoluteSeek)
     , hClose
-    , hFlush
     , hGetBuffering
     , hSeek
     , hSetBuffering
@@ -44,23 +45,30 @@ server
     => m (Server t)
 server = do
     (onError, reportError) <- newTriggerEvent
-    -- TODO: try to use Knob rather than pipes
-    (outRead, outWrite) <- liftIO createPipe
-    (errRead, errWrite) <- liftIO createPipe
     i <- liftIO newEmptyMVar
     o <- liftIO newEmptyMVar
-    liftIO $ forkIO $ runGhc (Just GHC.libdir) $ do
-        GHC.initializeSession
-        forever $ do
+    (output, error) <- liftIO $ do
+        -- TODO: try to use Knob rather than pipes
+        (outRead, outWrite) <- createPipe
+        hSetBuffering outRead NoBuffering
+        hSetBuffering outWrite NoBuffering
+        (errRead, errWrite) <- createPipe
+        hSetBuffering errRead NoBuffering
+        hSetBuffering errWrite NoBuffering
+        forkIO $ runGhc (Just GHC.libdir) $ do
+            GHC.initialiseSession
+            forever $ do
                 a <- liftIO $ takeMVar i
-                hCapture [(stdout, outWrite), (stderr, errWrite)] a
-                    `catch` (liftIO . reportError)
-                liftIO $ putMVar o ()
+                result <-
+                    hCapture [(stdout, outWrite), (stderr, errWrite)] a
+                        `catch` (liftIO . reportError)
+                liftIO $ putMVar o result
+        pure (outRead, errRead)
     pure
         Server
             { input = putMVar i >>> (*> takeMVar o)
-            , output = outRead
-            , error = errRead
+            , output
+            , error
             , onError
             }
 
@@ -73,23 +81,18 @@ hCapture :: forall m a. (MonadIO m, MonadMask m) => [(Handle, Handle)] -> m a ->
 hCapture handleMap action = go handleMap
   where
     go :: [(Handle, Handle)] -> m a
-    go [] = do
-        a <- action
-        liftIO $ forM_ handleMap $ \(oldHandle, newHandle) -> do
-            hFlush oldHandle
-        -- hReset newHandle
-        pure a
+    go [] = action
     go ((oldHandle, newHandle) : hs) = do
         buffering <- liftIO $ hGetBuffering oldHandle
         let redirect = liftIO $ do
                 old <- hDuplicate oldHandle
                 hDuplicateTo newHandle oldHandle
-                return old
+                pure old
             restore old = liftIO $ do
                 hDuplicateTo old oldHandle
                 hSetBuffering oldHandle buffering
                 hClose old
-        bracket redirect restore (\_ -> go hs)
+        bracket redirect restore (const $ go hs)
 
 hReset :: Handle -> IO ()
 hReset h = hSeek h AbsoluteSeek 0

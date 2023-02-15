@@ -21,6 +21,7 @@ common common
         DeriveAnyClass
         DeriveGeneric
         DerivingStrategies
+        DerivingVia
         ExplicitNamespaces
         OverloadedLabels
         OverloadedRecordDot
@@ -37,8 +38,7 @@ common common
         lifted-async,
         reflex,
         reflex-vty,
-        text,
-        unliftio
+        text
 
 library
     import:           common
@@ -65,9 +65,11 @@ library
         lsp,
         lsp-test,
         lsp-types,
+        monad-control,
         mtl,
         process,
         ref-tf,
+        transformers-base,
         vty
 
 executable dosh
@@ -79,8 +81,12 @@ executable dosh
         -rtsopts
         -with-rtsopts=-N
         -with-rtsopts=-T
+        -g3
     build-depends:
-        dosh
+        dosh,
+        ghc,
+        ghc-paths,
+        process
 
 test-suite dosh-test
     import:           common

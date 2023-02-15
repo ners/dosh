@@ -31,22 +31,6 @@
         "type": "github"
       }
     },
-    "lsp": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1676291744,
-        "narHash": "sha256-0KNfR76Hjt8lvP5LqKnGCXnbzagksyBLNvA4yV3SM7Q=",
-        "owner": "ners",
-        "repo": "lsp",
-        "rev": "ed0b77db3579149110ca1f3e9221fa1e89228a00",
-        "type": "github"
-      },
-      "original": {
-        "owner": "ners",
-        "repo": "lsp",
-        "type": "github"
-      }
-    },
     "nix-filter": {
       "locked": {
         "lastModified": 1676294984,
@@ -99,7 +83,6 @@
       "inputs": {
         "flake-compat": "flake-compat",
         "flake-utils": "flake-utils",
-        "lsp": "lsp",
         "nix-filter": "nix-filter",
         "nixpkgs": "nixpkgs",
         "reflex-vty": "reflex-vty"

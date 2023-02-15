@@ -1,14 +1,18 @@
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 module Dosh.LSP.Server where
 
-import Control.Concurrent.Strict (forkIO)
+import Control.Arrow ((>>>))
+import Control.Concurrent (forkIO, newEmptyMVar, putMVar, takeMVar)
 import Control.Monad (forever)
+import Control.Monad.Catch (SomeException, catch)
 import Control.Monad.Fix (MonadFix)
 import Control.Monad.IO.Class (MonadIO (..))
 import Development.IDE (Recorder (..), WithPriority, noLogging)
 import Development.IDE.Main (Arguments (..), Log, defaultArguments, defaultMain)
 import Ide.Types (IdePlugins (IdePlugins))
+import Language.LSP.Test qualified as LSP
 import Reflex
     ( MonadHold
     , PerformEvent (Performable)
@@ -20,8 +24,9 @@ import System.IO (BufferMode (NoBuffering), Handle, hSetBuffering)
 import System.Process (createPipe)
 
 data Server t = Server
-    { input :: Handle
+    { input :: LSP.Session () -> IO ()
     , output :: Handle
+    , error :: Event t SomeException
     , log :: Event t (WithPriority Log)
     }
 
@@ -39,6 +44,7 @@ server
     => m (Server t)
 server = do
     (log, logTrigger) <- newTriggerEvent
+    (error, reportError) <- newTriggerEvent
     (input, output) <- liftIO $ do
         -- TODO: try to use Knob rather than pipes
         (inRead, inWrite) <- createPipe
@@ -48,11 +54,21 @@ server = do
         hSetBuffering outRead NoBuffering
         hSetBuffering outWrite NoBuffering
         let recorder = Recorder{logger_ = liftIO . logTrigger}
-        forkIO $
-            forever $ -- remove when LSP stops crashing :-)
-                ghcide recorder inRead outWrite
+        forkIO $ ghcide recorder inRead outWrite
         pure (inWrite, outRead)
-    pure Server{..}
+    i <- liftIO newEmptyMVar
+    o <- liftIO newEmptyMVar
+    liftIO $ forkIO $ LSP.runSessionWithHandles input output LSP.defaultConfig LSP.fullCaps "" $ forever $ do
+        a <- liftIO $ takeMVar i
+        result <- a `catch` (liftIO . reportError)
+        liftIO $ putMVar o result
+    pure
+        Server
+            { input = putMVar i >>> (*> takeMVar o)
+            , output
+            , error
+            , log
+            }
 
 -- TODO: can we get rid of handles altogether?
 ghcide :: Recorder (WithPriority Log) -> Handle -> Handle -> IO ()
