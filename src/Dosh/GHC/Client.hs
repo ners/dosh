@@ -59,7 +59,7 @@ client ghc = do
             let log = forever $ liftIO $ do
                     content <- Text.hGetLine ghc.output <&> (<> "\n")
                     respond PartialResponse{..}
-            raceWithDelay_ 50 exec log `catch` \error -> liftIO (respond Error{..})
+            raceWithDelay_ 1000 exec log `catch` \error -> liftIO (respond Error{..})
             liftIO $ respond EndResponse{..}
     pure Client{..}
 

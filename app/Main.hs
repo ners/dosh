@@ -16,5 +16,5 @@ main = mainWidget $ do
     initManager_ $ mdo
         dn <- holdDyn newNotebook u
         u <- networkView (notebook ghcClient <$> dn) >>= switchHold never
-        grout flex $ text $ tshow <$> current dn
+        --grout flex $ text $ tshow <$> current dn
         void <$> ctrldPressed

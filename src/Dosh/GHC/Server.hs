@@ -58,11 +58,10 @@ server = do
         forkIO $ runGhc (Just GHC.libdir) $ do
             GHC.initialiseSession
             forever $ do
-                a <- liftIO $ takeMVar i
-                result <-
-                    hCapture [(stdout, outWrite), (stderr, errWrite)] a
-                        `catch` (liftIO . reportError)
-                liftIO $ putMVar o result
+                action <- liftIO $ takeMVar i
+                hCapture [(stdout, outWrite), (stderr, errWrite)] action
+                    `catch` (liftIO . reportError)
+                liftIO $ putMVar o ()
         pure (outRead, errRead)
     pure
         Server

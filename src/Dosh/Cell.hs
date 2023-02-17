@@ -4,14 +4,16 @@ import Control.Monad
 import Control.Monad.Fix
 import Control.Monad.IO.Class
 import Data.Generics.Labels ()
+import Data.Maybe (isJust)
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Data.Text.Zipper qualified as TZ
+import Data.Text.Zipper (DisplayLines (..), Span (..))
 import Dosh.Util
 import GHC.Generics (Generic)
+import Graphics.Vty qualified as V
 import Reflex
 import Reflex.Vty
-import Data.Maybe (isJust)
+import Reflex.Vty.Widget.Input.Code
 
 data Cell = Cell
     { number :: Int
@@ -60,22 +62,33 @@ cell
 cell c = do
     let inPrompt = " In[" <> tshow c.number <> "]: "
     let outPrompt = "Out[" <> tshow c.number <> "]: "
-    inputEvent <- grout (fixed $ pure $ max 1 $ length $ Text.lines c.input) $ row $ do
+    let errPrompt = "Err[" <> tshow c.number <> "]: "
+    (inputEvent, i) <- grout (fixed $ pure $ (1 +) $ Text.count "\n" $ c.input) $ row $ do
         grout (fixed $ pure $ Text.length inPrompt) $ text $ pure inPrompt
         if c.disabled
             then do
                 grout flex $ text $ pure c.input
-                pure never
+                pure (never, Nothing)
             else do
-                TextInput{..} <- grout flex $ textInput def{_textInputConfig_initialValue = TZ.fromText c.input}
-                -- let updateInput :: Event t CellEvent
-                --    updateInput = UpdateCellInput <$> updated _textInput_value
-                evaluate :: Event t CellEvent <- EvaluateCell <$$> tagPromptlyDyn _textInput_value <$> enterPressed
-                pure $ leftmost [evaluate]
-    when (isJust c.output || isJust c.error) $
-        grout (fixed $ pure $ max 1 $ maybe 0 (length . Text.lines) (c.output <> c.error)) $ row $ do
-            grout (fixed $ pure $ Text.length outPrompt) $ text $ pure outPrompt
-            grout flex $ do
-                mapM_ (text . pure) c.output
-                mapM_ (text . pure) c.error
+                i@CodeInput{..} <- grout flex $ codeInput def{_codeInputConfig_initialValue = codeZipperFromText "Haskell" c.input}
+                let updateInput :: Event t CellEvent
+                    updateInput = UpdateCellInput <$> updated _codeInput_value
+                evaluate :: Event t CellEvent <- EvaluateCell <$$> tagPromptlyDyn _codeInput_value <$> enterPressed
+                pure (leftmost [evaluate], Just i)
+    forM_ c.output $ \out ->
+        grout (fixed $ pure $ 1 + Text.count "\n" out) $
+            row $ do
+                grout (fixed $ pure $ Text.length outPrompt) $ text $ pure outPrompt
+                grout flex $ text $ pure out
+    forM_ c.error $ \err ->
+        grout (fixed $ pure $ 1 + Text.count "\n" err) $
+            row $ do
+                grout (fixed $ pure $ Text.length errPrompt) $ text $ pure errPrompt
+                grout flex $ redText $ pure err
+    -- forM_ i $ \j -> do
+    --    grout (fixed $ pure 1) $ row $ text $ current $ tshow <$> _codeInput_zipper j
+    --    grout (fixed $ pure 1) $ row $ text $ current $ tshow . ((\(Span _ t) -> t) <$$>) . _displayLines_spans <$> j._codeInput_displayLines
     pure inputEvent
+
+redText :: forall t m. (Reflex t, Monad m, HasDisplayRegion t m, HasImageWriter t m, HasTheme t m) => Behavior t Text -> m ()
+redText = richText RichTextConfig{_richTextConfig_attributes = pure $ V.withForeColor V.currentAttr V.red}

@@ -87,6 +87,7 @@
               packages = ps: [ ps.dosh ];
               withHoogle = true;
               nativeBuildInputs = with pkgs; with ps; [
+                cabal-fmt
                 cabal-install
                 fourmolu
                 haskell-language-server

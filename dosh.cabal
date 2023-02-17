@@ -52,12 +52,16 @@ library
         Dosh.LSP.Server,
         Dosh.Notebook,
         Dosh.Util
+    other-modules:
+        Reflex.Vty.Widget.Input.Code
     build-depends:
         containers,
         deepseq,
         exceptions,
+        extra,
         ghc,
         ghc-paths,
+        ghc-syntax-highlighter,
         ghcide,
         haskell-language-server,
         hls-plugin-api,
@@ -69,6 +73,8 @@ library
         mtl,
         process,
         ref-tf,
+        skylighting,
+        skylighting-core,
         transformers-base,
         vty
 

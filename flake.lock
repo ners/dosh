@@ -65,11 +65,11 @@
     "reflex-vty": {
       "flake": false,
       "locked": {
-        "lastModified": 1675757527,
-        "narHash": "sha256-yMZcnlQOM6vRQwo7VFg1/FYP6vh4/wqVlWVRaryYw7s=",
+        "lastModified": 1676570028,
+        "narHash": "sha256-RBCZFy8Uxz3KLnsa/Oo2vwoenCKKmYAnYmsAstudnFI=",
         "owner": "ners",
         "repo": "reflex-vty",
-        "rev": "5ec81f3f2c8e85c482df4a1b04c72214c41bb7a0",
+        "rev": "03e7b507dd8a31137259859e5df944e64cd891ff",
         "type": "github"
       },
       "original": {
