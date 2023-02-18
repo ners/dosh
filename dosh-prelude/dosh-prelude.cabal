@@ -1,0 +1,40 @@
+cabal-version:      3.0
+name:               dosh-prelude
+version:            23.1
+synopsis:           The power of Haskell in your terminal!
+homepage:           https://github.com/ners/dosh
+license:            GPL-3.0-or-later
+author:             ners
+maintainer:         ners@gmx.ch
+category:           System
+build-type:         Simple
+
+library
+    hs-source-dirs:   src
+    default-language: GHC2021
+    ghc-options:
+        -Wall
+    default-extensions:
+        ApplicativeDo
+        DataKinds
+        DefaultSignatures
+        DeriveAnyClass
+        DeriveGeneric
+        DerivingStrategies
+        DerivingVia
+        ExplicitNamespaces
+        OverloadedLabels
+        OverloadedRecordDot
+        OverloadedStrings
+        RecordWildCards
+        RecursiveDo
+        TypeFamilies
+    build-depends:
+        base,
+        bytestring,
+        data-default,
+        generic-lens,
+        lens,
+        text
+    exposed-modules:
+        Dosh.Prelude

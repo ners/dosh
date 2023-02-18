@@ -6,6 +6,7 @@ import Control.Monad.Base (liftBase)
 import Control.Monad.Trans.Control (MonadBaseControl)
 import Data.Map (Map)
 import Data.Map qualified as Map
+import Data.String (IsString, fromString)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.IO qualified as Text
@@ -31,6 +32,9 @@ tread = read . Text.unpack
 
 tshow :: Show a => a -> Text
 tshow = Text.pack . show
+
+fromText :: IsString s => Text -> s
+fromText = fromString . Text.unpack
 
 ctrlcPressed :: (Monad m, Reflex t, HasInput t m) => m (Event t KeyCombo)
 ctrlcPressed = keyCombo (KChar 'c', [MCtrl])

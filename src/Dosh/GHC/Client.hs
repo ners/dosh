@@ -1,4 +1,5 @@
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
@@ -13,13 +14,20 @@ import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader (ReaderT (..))
 import Control.Monad.Trans.Control (MonadBaseControl (..))
 import Data.Char (isSpace)
+import Data.Functor (void)
+import Data.Generics.Labels ()
+import Data.Generics.Product (position)
+import Data.List (stripPrefix)
+import Data.Maybe (listToMaybe)
+import Data.String (IsString (..))
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.IO qualified as Text
 import Dosh.GHC.Server (Server (..))
 import Dosh.Util
-import GHC qualified (execOptions, execStmt)
+import GHC qualified
 import GHC.Driver.Monad (Ghc (..), Session (..))
+import GHC.Generics (Generic)
 import Reflex hiding (Query, Response)
 
 data Query = Query
@@ -54,10 +62,13 @@ client ghc = do
     performEvent $
         onQuery <&> \Query{id, content} -> liftIO $ ghc.input $ do
             let exec = do
-                    let statements :: [Text]
-                        statements = reverse $ foldl addStatementLine [] $ Text.lines content
-                    forM_ statements $ \statement -> GHC.execStmt (Text.unpack statement) GHC.execOptions
-                    GHC.execStmt "mapM_ System.IO.hFlush [System.IO.stdout, System.IO.stderr]" GHC.execOptions
+                    forM_ (splitCommands content) $ \case
+                        Import s -> do
+                            parsed <- GHC.parseImportDecl s
+                            context <- GHC.getContext
+                            GHC.setContext $ GHC.IIDecl parsed : context
+                        Statement s -> void $ GHC.execStmt s GHC.execOptions
+                    GHC.execStmt "mapM_ hFlush [stdout, stderr]" GHC.execOptions
             let log = forever $ liftIO $ do
                     content <- Text.hGetLine ghc.output <&> (<> "\n")
                     respond PartialResponse{id, content}
@@ -69,12 +80,30 @@ deriving via (ReaderT Session IO) instance MonadBase IO Ghc
 
 deriving via (ReaderT Session IO) instance MonadBaseControl IO Ghc
 
-addStatementLine :: [Text] -> Text -> [Text]
-addStatementLine [] line = [line]
-addStatementLine ss "" = ss
-addStatementLine (currentStatement : oldStatements) line
-    | isSpace (Text.head line) = (currentStatement <> "\n" <> line) : oldStatements
-    | otherwise = line : currentStatement : oldStatements
+data Command = Import String | Statement String
+    deriving stock (Generic, Show, Eq)
+
+instance IsString Command where
+    fromString s
+        | Just True == (stripPrefix "import" s >>= listToMaybe <&> isSpace) = Import s
+        | otherwise = Statement s
+
+append :: Command -> Text -> Command
+append c t = c & position @1 %~ (<> Text.unpack t)
+
+{- | Splits a text object into a list of commands to be evaluated.
+ Each line of the input is a new command, unless it starts with a whitespace character,
+ in which case it is appended to the previous command.
+-}
+splitCommands :: Text -> [Command]
+splitCommands = reverse . foldl addCommandLine [] . Text.lines
+
+addCommandLine :: [Command] -> Text -> [Command]
+addCommandLine [] line = [fromText line]
+addCommandLine ss "" = ss
+addCommandLine (currentStatement : oldStatements) line
+    | isSpace (Text.head line) = (currentStatement `append` "\n" `append` line) : oldStatements
+    | otherwise = fromText line : currentStatement : oldStatements
 
 {-
 print "foo"

@@ -33,6 +33,7 @@ common common
         base,
         bytestring,
         data-default,
+        dosh-prelude,
         generic-lens,
         lens,
         lifted-async,

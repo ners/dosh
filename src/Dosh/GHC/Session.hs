@@ -5,7 +5,6 @@ module Dosh.GHC.Session where
 
 import Control.Lens
 import Control.Monad.IO.Class (liftIO)
-import Data.Functor
 import Data.Generics.Labels ()
 import Development.IDE.GHC.Compat qualified as GHC
 import GHC (GhcMonad)
@@ -21,41 +20,35 @@ import GHC.Utils.Misc qualified as GHC
 
 deriving instance Generic GHC.DynFlags
 
+enableExtension :: GHC.Extension -> GHC.DynFlags -> GHC.DynFlags
+enableExtension = flip GHC.xopt_set
+
+disableExtension :: GHC.Extension -> GHC.DynFlags -> GHC.DynFlags
+disableExtension = flip GHC.xopt_unset
+
+enableGeneral :: GHC.GeneralFlag -> GHC.DynFlags -> GHC.DynFlags
+enableGeneral = flip GHC.gopt_set
+
+disableGeneral :: GHC.GeneralFlag -> GHC.DynFlags -> GHC.DynFlags
+disableGeneral = flip GHC.gopt_unset
+
 initialiseSession :: GhcMonad m => m ()
 initialiseSession = do
-    originalFlagsNoPackageEnv <- GHC.getSessionDynFlags
     logger <- GHC.getLogger
-    originalFlags <- liftIO $ GHC.interpretPackageEnv logger originalFlagsNoPackageEnv
-    let
-        enableExtension :: GHC.Extension -> GHC.DynFlags -> GHC.DynFlags
-        enableExtension = flip GHC.xopt_set
-        disableExtension :: GHC.Extension -> GHC.DynFlags -> GHC.DynFlags
-        disableExtension = flip GHC.xopt_unset
-        enableGeneral :: GHC.GeneralFlag -> GHC.DynFlags -> GHC.DynFlags
-        enableGeneral = flip GHC.gopt_set
-        disableGeneral :: GHC.GeneralFlag -> GHC.DynFlags -> GHC.DynFlags
-        disableGeneral = flip GHC.gopt_unset
-        dflags :: GHC.DynFlags
-        dflags =
-            originalFlags
+    GHC.getSessionDynFlags
+        >>= liftIO . GHC.interpretPackageEnv logger
+        >>= \flags -> GHC.setSessionDynFlags $
+            flags
+                & #backend .~ GHC.Interpreter
                 & #useColor .~ GHC.Always
                 & disableGeneral GHC.Opt_GhciSandbox
                 & filtered (const GHC.hostIsDynamic) %~ addWay' GHC.WayDyn
                 & disableExtension GHC.MonomorphismRestriction
                 & enableExtension GHC.ExtendedDefaultRules
                 & enableExtension GHC.OverloadedStrings
-    void $
-        GHC.setSessionDynFlags $
-            dflags
-                { GHC.backend = GHC.Interpreter
-                }
-    prelude <- GHC.parseImportDecl "import Prelude"
-    lens' <- GHC.parseImportDecl "import Control.Lens"
-    systemIo <- GHC.parseImportDecl "import qualified System.IO"
+    prelude <- GHC.parseImportDecl "import Dosh.Prelude"
     GHC.setContext
         [ GHC.IIDecl $ prelude{GHC.ideclImplicit = True}
-        , GHC.IIDecl $ lens'{GHC.ideclImplicit = True}
-        , GHC.IIDecl $ systemIo{GHC.ideclImplicit = True}
         ]
 
 addWay' :: GHC.Way -> GHC.DynFlags -> GHC.DynFlags

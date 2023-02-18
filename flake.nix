@@ -37,6 +37,7 @@
             let ghcVersionAtLeast = lib.versionAtLeast ps.ghc.version; in
             builtins.trace "GHC version: ${ps.ghc.version}"
               ({
+                dosh-prelude = self.callCabal2nix pname ./dosh-prelude { };
                 dosh = self.callCabal2nix pname src { };
                 reflex-process = doJailbreak super.reflex-process;
                 reflex-vty = self.callCabal2nix "reflex-vty" inputs.reflex-vty { };

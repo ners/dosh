@@ -3,6 +3,7 @@ module Dosh.Cell where
 import Control.Monad
 import Control.Monad.Fix
 import Control.Monad.IO.Class
+import Data.Functor (($>))
 import Data.Generics.Labels ()
 import Data.Text (Text)
 import Data.Text qualified as Text
@@ -13,7 +14,6 @@ import Graphics.Vty qualified as V
 import Reflex
 import Reflex.Vty
 import Reflex.Vty.Widget.Input.Code
-import Data.Functor (($>))
 
 data Cell = Cell
     { number :: Int
@@ -98,7 +98,7 @@ cell c = do
             row $ do
                 grout (fixed $ pure $ Text.length errPrompt) $ text $ pure errPrompt
                 grout flex $ redText $ pure err
-    --grout (fixed $ pure 1) $ row $ text $ current $ tshow . zipper <$> codeZipper
+    -- grout (fixed $ pure 1) $ row $ text $ current $ tshow . zipper <$> codeZipper
     pure inputEvent
 
 redText :: forall t m. (Reflex t, Monad m, HasDisplayRegion t m, HasImageWriter t m, HasTheme t m) => Behavior t Text -> m ()
