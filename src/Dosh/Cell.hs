@@ -4,16 +4,16 @@ import Control.Monad
 import Control.Monad.Fix
 import Control.Monad.IO.Class
 import Data.Generics.Labels ()
-import Data.Maybe (isJust)
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Data.Text.Zipper (DisplayLines (..), Span (..))
+import Data.Text.Zipper qualified as TZ
 import Dosh.Util
 import GHC.Generics (Generic)
 import Graphics.Vty qualified as V
 import Reflex
 import Reflex.Vty
 import Reflex.Vty.Widget.Input.Code
+import Data.Functor (($>))
 
 data Cell = Cell
     { number :: Int
@@ -63,18 +63,31 @@ cell c = do
     let inPrompt = " In[" <> tshow c.number <> "]: "
     let outPrompt = "Out[" <> tshow c.number <> "]: "
     let errPrompt = "Err[" <> tshow c.number <> "]: "
-    (inputEvent, i) <- grout (fixed $ pure $ (1 +) $ Text.count "\n" $ c.input) $ row $ do
+    newLine <- altEnterPressed
+    i :: Event t VtyEvent <- Reflex.Vty.input
+    dh :: Dynamic t Int <- displayHeight
+    let updateEvent :: Event t (CodeZipper -> CodeZipper)
+        updateEvent =
+            mergeWith
+                (.)
+                [ newLine $> highlightZipper . updateZipper (TZ.insertChar '\n')
+                , uncurry (updateCodeZipper 4) <$> attach (current dh) i
+                ]
+    codeZipper <- foldDyn ($) (codeZipperFromText "Haskell" c.input) updateEvent
+    inputEvent <- grout (fixed $ length . highlighted <$> codeZipper) $ row $ do
         grout (fixed $ pure $ Text.length inPrompt) $ text $ pure inPrompt
         if c.disabled
             then do
                 grout flex $ text $ pure c.input
-                pure (never, Nothing)
+                pure never
             else do
-                i@CodeInput{..} <- grout flex $ codeInput def{_codeInputConfig_initialValue = codeZipperFromText "Haskell" c.input}
-                let updateInput :: Event t CellEvent
-                    updateInput = UpdateCellInput <$> updated _codeInput_value
-                evaluate :: Event t CellEvent <- EvaluateCell <$$> tagPromptlyDyn _codeInput_value <$> enterPressed
-                pure (leftmost [evaluate], Just i)
+                CodeInput{..} <-
+                    grout flex $
+                        codeInput
+                            def
+                                { _codeInputConfig_value = Just codeZipper
+                                }
+                EvaluateCell <$$> tagPromptlyDyn _codeInput_value <$> enterPressed
     forM_ c.output $ \out ->
         grout (fixed $ pure $ 1 + Text.count "\n" out) $
             row $ do
@@ -85,9 +98,7 @@ cell c = do
             row $ do
                 grout (fixed $ pure $ Text.length errPrompt) $ text $ pure errPrompt
                 grout flex $ redText $ pure err
-    -- forM_ i $ \j -> do
-    --    grout (fixed $ pure 1) $ row $ text $ current $ tshow <$> _codeInput_zipper j
-    --    grout (fixed $ pure 1) $ row $ text $ current $ tshow . ((\(Span _ t) -> t) <$$>) . _displayLines_spans <$> j._codeInput_displayLines
+    --grout (fixed $ pure 1) $ row $ text $ current $ tshow . zipper <$> codeZipper
     pure inputEvent
 
 redText :: forall t m. (Reflex t, Monad m, HasDisplayRegion t m, HasImageWriter t m, HasTheme t m) => Behavior t Text -> m ()

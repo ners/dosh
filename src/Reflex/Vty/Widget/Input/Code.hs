@@ -1,17 +1,21 @@
-{-# OPTIONS_GHC -Wno-unused-matches #-}
-{-# OPTIONS_GHC -Wno-orphans #-}
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
+{-# OPTIONS_GHC -Wno-unused-matches #-}
 
 module Reflex.Vty.Widget.Input.Code where
 
 import Control.Arrow ((>>>))
 import Control.Lens.Operators
 import Control.Monad.Fix (MonadFix)
-import Data.Either.Extra (maybeToEither, fromRight)
+import Data.Default (Default)
+import Data.Either.Extra (fromRight, maybeToEither)
 import Data.Generics.Labels ()
+import Data.Generics.Product (position)
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Data.Text.Zipper (TextZipper, DisplayLines (..), TextAlignment (..), Span (..), mapZipper)
+import Data.Text.Zipper (DisplayLines (..), Span (..), TextAlignment (..), TextZipper, mapZipper)
+import Data.Text.Zipper qualified as TZ
 import Data.Tuple.Extra (both)
 import GHC.Generics (Generic)
 import Graphics.Vty qualified as V
@@ -21,9 +25,6 @@ import Reflex.Vty.Widget.Input.Mouse
 import Reflex.Vty.Widget.Input.Text
 import Skylighting (TokenizerConfig (..), defaultSyntaxMap, lookupSyntax, tokenize)
 import Skylighting.Types (SourceLine, Token, TokenType (..))
-import qualified Data.Text.Zipper as TZ
-import Data.Default (Default)
-import Data.Generics.Product (position)
 
 deriving instance Generic tag => Generic (Span tag)
 
@@ -35,15 +36,17 @@ data CodeZipper = CodeZipper
     deriving stock (Generic, Show)
 
 codeZipperFromText :: Text -> Text -> CodeZipper
-codeZipperFromText language code = highlightZipper
-    CodeZipper
-        { zipper=TZ.fromText code
-        , language
-        , highlighted = []
-        }
+codeZipperFromText language code =
+    highlightZipper
+        CodeZipper
+            { zipper = TZ.fromText code
+            , language
+            , highlighted = []
+            }
 
 data CodeInputConfig t = CodeInputConfig
     { _codeInputConfig_initialValue :: CodeZipper
+    , _codeInputConfig_value :: Maybe (Dynamic t CodeZipper)
     , _codeInputConfig_modify :: Event t (CodeZipper -> CodeZipper)
     , _codeInputConfig_tabWidth :: Int
     , _codeInputConfig_display :: Dynamic t (Char -> Char)
@@ -53,6 +56,7 @@ instance Reflex t => Default (CodeInputConfig t) where
     def =
         CodeInputConfig
             { _codeInputConfig_initialValue = codeZipperFromText "" ""
+            , _codeInputConfig_value = Nothing
             , _codeInputConfig_modify = never
             , _codeInputConfig_tabWidth = 4
             , _codeInputConfig_display = pure id
@@ -89,12 +93,13 @@ codeInput cfg = mdo
                         updateZipper $ TZ.goToDisplayLinePosition mx (st + my) dl
                 ]
     v :: Dynamic t CodeZipper <-
-        foldDyn ($) (_codeInputConfig_initialValue cfg) $
-            mergeWith
-                (.)
-                [ valueChangedByCaller
-                , valueChangedByUI
-                ]
+        flip fromMaybe (pure <$> cfg._codeInputConfig_value) $
+            foldDyn ($) (_codeInputConfig_initialValue cfg) $
+                mergeWith
+                    (.)
+                    [ valueChangedByCaller
+                    , valueChangedByUI
+                    ]
     click <- mouseDown V.BLeft
 
     -- TODO reverseVideo is prob not what we want. Does not work with `darkTheme` in example.hs (cursor is dark rather than light bg)
@@ -159,27 +164,27 @@ displayCodeLinesWithAlignment alignment width tag cursorTag z =
     cursorRow = length z.zipper._textZipper_linesBefore
     cursorCol = Text.length z.zipper._textZipper_before
     tokenToSpan (tokenType, code) = highlightSpan tokenType $ Span tag code
-    tokenToCursorSpan = reverseSpan . tokenToSpan
+    tokenToCursorSpan = cursorSpan . tokenToSpan
     lineToSpans (row, line)
-        | row /= cursorRow = tokenToSpan <$> line
+        | row /= cursorRow = tokenToSpan <$> ((NormalTok, "") : line)
         | otherwise = do
-            let (len, spans) = foldr appendTokenInCursorRow (0, []) line
+            let (len, spans) = foldl appendTokenInCursorRow (0, []) line
             spans ++ [tokenToCursorSpan (NormalTok, " ") | len == cursorCol]
     tokenWidth = Text.length . snd
-    appendTokenInCursorRow t (rowWidth, rowSpans) =
+    appendTokenInCursorRow (rowWidth, rowSpans) t =
         let newWidth = tokenWidth t + rowWidth
-            newSpans = tokenToSpansInCursorRow t rowWidth ++ rowSpans
+            newSpans = rowSpans ++ tokenToSpansInCursorRow t rowWidth
          in (newWidth, newSpans)
     tokenToSpansInCursorRow t col
-        | Text.null (snd t) = []
+        | tokenWidth t == 0 = []
         | col <= cursorCol && (col + tokenWidth t) > cursorCol =
             let (a, b, c) = splitTokenAt' tokenCol t
                 tokenCol = cursorCol - col
              in [tokenToSpan a, tokenToCursorSpan b, tokenToSpan c]
         | otherwise = [tokenToSpan t]
 
-reverseSpan :: Span V.Attr -> Span V.Attr
-reverseSpan = position @1 %~ flip V.withStyle V.reverseVideo
+cursorSpan :: Span V.Attr -> Span V.Attr
+cursorSpan = position @1 %~ flip V.withStyle V.reverseVideo
 
 nonEmptyToken :: Token -> Token
 nonEmptyToken (tokenType, tokenText) = (tokenType,) $ if Text.null tokenText then " " else tokenText
@@ -292,12 +297,12 @@ highlight :: Text -> Text -> [SourceLine]
 highlight lang code = fromRight plain $ do
     syntax <- maybeToEither @String "Syntax not found" $ lookupSyntax lang defaultSyntaxMap
     let cfg = TokenizerConfig{syntaxMap = defaultSyntaxMap, traceOutput = False}
-    case tokenize cfg syntax code of
+    case tokenize cfg syntax (code <> "\n") of
         Left _ -> Left "Tokenize failed"
         Right [] -> Left "No tokens produced"
         Right x -> Right x
-    where
-        plain = [(NormalTok,) <$> Text.lines (code <> "\n")]
+  where
+    plain = [(NormalTok,) <$> Text.lines (code <> "\n")]
 
 highlightZipper :: CodeZipper -> CodeZipper
 highlightZipper z = z & #highlighted .~ highlight z.language (TZ.value z.zipper)

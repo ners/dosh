@@ -44,6 +44,9 @@ enterPressed = key KEnter
 shiftEnterPressed :: (Monad m, Reflex t, HasInput t m) => m (Event t KeyCombo)
 shiftEnterPressed = keyCombo (KEnter, [MShift])
 
+altEnterPressed :: (Monad m, Reflex t, HasInput t m) => m (Event t KeyCombo)
+altEnterPressed = keyCombo (KEnter, [MMeta])
+
 {- | Given a map of values and a map of value transformations, apply
  transformations on the intersection of these two maps.
 -}
@@ -67,8 +70,9 @@ getLines handle =
         <$> Text.hGetLine handle
         <*> getAvailableLines handle
 
--- | Run two @IO@ actions concurrently.
--- The loser of the race is 'cancel'led after a delay (in microseconds).
+{- | Run two @IO@ actions concurrently.
+ The loser of the race is 'cancel'led after a delay (in microseconds).
+-}
 raceWithDelay_ :: MonadBaseControl IO m => Int -> m a -> m b -> m ()
 raceWithDelay_ d a b = race_ (a <* delay') (b <* delay')
   where

@@ -50,9 +50,11 @@ initialiseSession = do
                 { GHC.backend = GHC.Interpreter
                 }
     prelude <- GHC.parseImportDecl "import Prelude"
+    lens' <- GHC.parseImportDecl "import Control.Lens"
     systemIo <- GHC.parseImportDecl "import qualified System.IO"
     GHC.setContext
         [ GHC.IIDecl $ prelude{GHC.ideclImplicit = True}
+        , GHC.IIDecl $ lens'{GHC.ideclImplicit = True}
         , GHC.IIDecl $ systemIo{GHC.ideclImplicit = True}
         ]
 
