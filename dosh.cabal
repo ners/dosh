@@ -45,6 +45,7 @@ library
     import:           common
     hs-source-dirs:   src
     exposed-modules:
+        Data.Text.CodeZipper,
         Dosh.Cell,
         Dosh.GHC.Client,
         Dosh.GHC.Server,
@@ -102,6 +103,10 @@ test-suite dosh-test
     main-is:          Spec.hs
     hs-source-dirs:   test
     build-depends:
+        QuickCheck,
         dosh,
+        extra,
         hspec,
         vty
+    other-modules:
+        Data.Text.CodeZipperSpec,

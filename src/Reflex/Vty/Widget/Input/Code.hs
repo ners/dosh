@@ -4,7 +4,6 @@
 
 module Reflex.Vty.Widget.Input.Code where
 
-import Control.Arrow ((>>>))
 import Control.Lens.Operators
 import Control.Monad.Fix (MonadFix)
 import Data.Default (Default)
@@ -14,8 +13,9 @@ import Data.Generics.Product (position)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Data.Text.Zipper (DisplayLines (..), Span (..), TextAlignment (..), TextZipper, mapZipper)
-import Data.Text.Zipper qualified as TZ
+import Data.Text.CodeZipper (CodeZipper)
+import Data.Text.CodeZipper qualified as CZ
+import Data.Text.Zipper (DisplayLines (..), Span (..), TextAlignment (..))
 import Data.Tuple.Extra (both)
 import GHC.Generics (Generic)
 import Graphics.Vty qualified as V
@@ -28,26 +28,12 @@ import Skylighting.Types (SourceLine, Token, TokenType (..))
 
 deriving instance Generic tag => Generic (Span tag)
 
-data CodeZipper = CodeZipper
-    { zipper :: TextZipper
-    , language :: Text
-    , highlighted :: [SourceLine]
-    }
-    deriving stock (Generic, Show)
-
-codeZipperFromText :: Text -> Text -> CodeZipper
-codeZipperFromText language code =
-    highlightZipper
-        CodeZipper
-            { zipper = TZ.fromText code
-            , language
-            , highlighted = []
-            }
+instance CZ.Pretty TokenType where prettify = highlight
 
 data CodeInputConfig t = CodeInputConfig
-    { _codeInputConfig_initialValue :: CodeZipper
-    , _codeInputConfig_value :: Maybe (Dynamic t CodeZipper)
-    , _codeInputConfig_modify :: Event t (CodeZipper -> CodeZipper)
+    { _codeInputConfig_initialValue :: CodeZipper TokenType
+    , _codeInputConfig_value :: Maybe (Dynamic t (CodeZipper TokenType))
+    , _codeInputConfig_modify :: Event t (CodeZipper TokenType -> CodeZipper TokenType)
     , _codeInputConfig_tabWidth :: Int
     , _codeInputConfig_display :: Dynamic t (Char -> Char)
     }
@@ -55,7 +41,7 @@ data CodeInputConfig t = CodeInputConfig
 instance Reflex t => Default (CodeInputConfig t) where
     def =
         CodeInputConfig
-            { _codeInputConfig_initialValue = codeZipperFromText "" ""
+            { _codeInputConfig_initialValue = CZ.fromText "" ""
             , _codeInputConfig_value = Nothing
             , _codeInputConfig_modify = never
             , _codeInputConfig_tabWidth = 4
@@ -64,9 +50,9 @@ instance Reflex t => Default (CodeInputConfig t) where
 
 data CodeInput t = CodeInput
     { _codeInput_value :: Dynamic t Text
-    , _codeInput_zipper :: Dynamic t CodeZipper
+    , _codeInput_zipper :: Dynamic t (CodeZipper TokenType)
     , _codeInput_displayLines :: Dynamic t (DisplayLines V.Attr)
-    , _codeInput_userInput :: Event t CodeZipper
+    , _codeInput_userInput :: Event t (CodeZipper TokenType)
     , _codeInput_lines :: Dynamic t Int
     }
 
@@ -82,17 +68,14 @@ codeInput cfg = mdo
     dw <- displayWidth
     bt <- theme
     attr0 <- sample bt
-    let valueChangedByCaller, valueChangedByUI :: Event t (CodeZipper -> CodeZipper)
+    let valueChangedByCaller, valueChangedByUI :: Event t (CodeZipper TokenType -> CodeZipper TokenType)
         valueChangedByCaller = _codeInputConfig_modify cfg
         valueChangedByUI =
             mergeWith
                 (.)
                 [ uncurry (updateCodeZipper (_codeInputConfig_tabWidth cfg)) <$> attach (current dh) i
-                , let displayInfo = (,) <$> current rows <*> scrollTop
-                   in ffor (attach displayInfo click) $ \((dl, st), MouseDown _ (mx, my) _) ->
-                        updateZipper $ TZ.goToDisplayLinePosition mx (st + my) dl
                 ]
-    v :: Dynamic t CodeZipper <-
+    v :: Dynamic t (CodeZipper TokenType) <-
         flip fromMaybe (pure <$> cfg._codeInputConfig_value) $
             foldDyn ($) (_codeInputConfig_initialValue cfg) $
                 mergeWith
@@ -106,13 +89,9 @@ codeInput cfg = mdo
     let
         toCursorAttrs :: V.Attr -> V.Attr
         toCursorAttrs attr = V.withStyle attr V.reverseVideo
-        rowInputDyn :: Dynamic t (Int, CodeZipper, Bool)
-        rowInputDyn =
-            (,,)
-                <$> dw
-                <*> (updateZipper . mapZipper <$> _codeInputConfig_display cfg <*> v)
-                <*> f
-        toDisplayLines :: V.Attr -> (Int, CodeZipper, Bool) -> DisplayLines V.Attr
+        rowInputDyn :: Dynamic t (Int, CodeZipper TokenType, Bool)
+        rowInputDyn = (,,) <$> dw <*> v <*> f
+        toDisplayLines :: V.Attr -> (Int, CodeZipper TokenType, Bool) -> DisplayLines V.Attr
         toDisplayLines attr (w, s, x) =
             let c = if x then toCursorAttrs attr else attr
              in displayCodeLines w attr c s
@@ -130,7 +109,7 @@ codeInput cfg = mdo
     tellImages $ (\imgs st -> (: []) . V.vertCat $ drop st imgs) <$> current img <*> scrollTop
     return $
         CodeInput
-            { _codeInput_value = TZ.value . zipper <$> v
+            { _codeInput_value = CZ.toText <$> v
             , _codeInput_zipper = v
             , _codeInput_displayLines = rows
             , _codeInput_userInput = attachWith (&) (current v) valueChangedByUI
@@ -151,18 +130,18 @@ displayCodeLinesWithAlignment
     -- ^ Metadata for normal characters
     -> V.Attr
     -- ^ Metadata for the cursor
-    -> CodeZipper
+    -> CodeZipper TokenType
     -- ^ The text input contents and cursor state
     -> DisplayLines V.Attr
 displayCodeLinesWithAlignment alignment width tag cursorTag z =
     DisplayLines
-        { _displayLines_spans = lineToSpans <$> zip [0 ..] z.highlighted
+        { _displayLines_spans = lineToSpans <$> zip [0 ..] (CZ.allLines z)
         , _displayLines_cursorPos = (cursorCol, cursorRow)
         , _displayLines_offsetMap = mempty
         }
   where
-    cursorRow = length z.zipper._textZipper_linesBefore
-    cursorCol = Text.length z.zipper._textZipper_before
+    cursorRow = length z.linesBefore
+    cursorCol = CZ.lineWidth z.tokensBefore
     tokenToSpan (tokenType, code) = highlightSpan tokenType $ Span tag code
     tokenToCursorSpan = cursorSpan . tokenToSpan
     lineToSpans (row, line)
@@ -285,13 +264,10 @@ displayCodeLines
     -- ^ Metadata for normal characters
     -> V.Attr
     -- ^ Metadata for the cursor
-    -> CodeZipper
+    -> CodeZipper TokenType
     -- ^ The text input contents and cursor state
     -> DisplayLines V.Attr
 displayCodeLines = displayCodeLinesWithAlignment TextAlignment_Left
-
-updateZipper :: (TextZipper -> TextZipper) -> CodeZipper -> CodeZipper
-updateZipper = (#zipper %~)
 
 highlight :: Text -> Text -> [SourceLine]
 highlight lang code = fromRight plain $ do
@@ -304,9 +280,6 @@ highlight lang code = fromRight plain $ do
   where
     plain = [(NormalTok,) <$> Text.lines (code <> "\n")]
 
-highlightZipper :: CodeZipper -> CodeZipper
-highlightZipper z = z & #highlighted .~ highlight z.language (TZ.value z.zipper)
-
 -- | Default vty event handler for text inputs
 updateCodeZipper
     :: Int
@@ -315,24 +288,24 @@ updateCodeZipper
     -- ^ Page size
     -> V.Event
     -- ^ The vty event to handle
-    -> CodeZipper
+    -> CodeZipper TokenType
     -- ^ The zipper to modify
-    -> CodeZipper
+    -> CodeZipper TokenType
 updateCodeZipper tabWidth pageSize ev = case ev of
     -- Special characters
-    V.EvKey (V.KChar '\t') [] -> updateZipper (TZ.tab tabWidth) >>> highlightZipper
+    V.EvKey (V.KChar '\t') [] -> CZ.insertChar '\t'
     -- Regular characters
-    V.EvKey (V.KChar k) [] -> updateZipper (TZ.insertChar k) >>> highlightZipper
+    V.EvKey (V.KChar k) [] -> CZ.insertChar k
     -- Deletion buttons
-    V.EvKey V.KBS [] -> updateZipper TZ.deleteLeft >>> highlightZipper
-    V.EvKey V.KDel [] -> updateZipper TZ.deleteRight >>> highlightZipper
+    V.EvKey V.KBS [] -> CZ.deleteLeft
+    V.EvKey V.KDel [] -> CZ.deleteRight
     -- Arrow keys
-    V.EvKey V.KLeft [] -> updateZipper TZ.left
-    V.EvKey V.KRight [] -> updateZipper TZ.right
-    V.EvKey V.KUp [] -> updateZipper TZ.up
-    V.EvKey V.KDown [] -> updateZipper TZ.down
-    V.EvKey V.KHome [] -> updateZipper TZ.home
-    V.EvKey V.KEnd [] -> updateZipper TZ.end
-    V.EvKey V.KPageUp [] -> updateZipper $ TZ.pageUp pageSize
-    V.EvKey V.KPageDown [] -> updateZipper $ TZ.pageDown pageSize
+    V.EvKey V.KLeft [] -> CZ.left
+    V.EvKey V.KRight [] -> CZ.right
+    V.EvKey V.KUp [] -> CZ.up
+    V.EvKey V.KDown [] -> CZ.down
+    V.EvKey V.KHome [] -> CZ.home
+    V.EvKey V.KEnd [] -> CZ.end
+    V.EvKey V.KPageUp [] -> CZ.upN pageSize
+    V.EvKey V.KPageDown [] -> CZ.downN pageSize
     _ -> id

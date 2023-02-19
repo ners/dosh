@@ -7,7 +7,7 @@ import Data.Functor (($>))
 import Data.Generics.Labels ()
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Data.Text.Zipper qualified as TZ
+import Data.Text.CodeZipper qualified as CZ
 import Dosh.Util
 import GHC.Generics (Generic)
 import Graphics.Vty qualified as V
@@ -66,15 +66,14 @@ cell c = do
     newLine <- altEnterPressed
     i :: Event t VtyEvent <- Reflex.Vty.input
     dh :: Dynamic t Int <- displayHeight
-    let updateEvent :: Event t (CodeZipper -> CodeZipper)
-        updateEvent =
+    let updateEvent =
             mergeWith
                 (.)
-                [ newLine $> highlightZipper . updateZipper (TZ.insertChar '\n')
+                [ newLine $> CZ.insertChar '\n'
                 , uncurry (updateCodeZipper 4) <$> attach (current dh) i
                 ]
-    codeZipper <- foldDyn ($) (codeZipperFromText "Haskell" c.input) updateEvent
-    inputEvent <- grout (fixed $ length . highlighted <$> codeZipper) $ row $ do
+    codeZipper <- foldDyn ($) (CZ.fromText "Haskell" c.input) updateEvent
+    inputEvent <- grout (fixed $ length . CZ.allLines <$> codeZipper) $ row $ do
         grout (fixed $ pure $ Text.length inPrompt) $ text $ pure inPrompt
         if c.disabled
             then do
@@ -98,7 +97,7 @@ cell c = do
             row $ do
                 grout (fixed $ pure $ Text.length errPrompt) $ text $ pure errPrompt
                 grout flex $ redText $ pure err
-    -- grout (fixed $ pure 1) $ row $ text $ current $ tshow . zipper <$> codeZipper
+    grout (fixed $ pure 1) $ row $ text $ current $ tshow <$> codeZipper
     pure inputEvent
 
 redText :: forall t m. (Reflex t, Monad m, HasDisplayRegion t m, HasImageWriter t m, HasTheme t m) => Behavior t Text -> m ()

@@ -8,6 +8,7 @@ module Dosh.Prelude
     , module Data.ByteString.Lazy
     , module Data.Functor
     , module Data.Generics.Labels
+    , module Data.String
     , module Data.Text
     , module System.IO
     )
@@ -21,6 +22,7 @@ import Data.ByteString (ByteString)
 import Data.ByteString.Lazy (LazyByteString)
 import Data.Functor
 import Data.Generics.Labels
+import Data.String
 import Data.Text (Text)
 import System.IO
 import Prelude

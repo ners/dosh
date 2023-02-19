@@ -37,15 +37,16 @@ initialiseSession = do
     logger <- GHC.getLogger
     GHC.getSessionDynFlags
         >>= liftIO . GHC.interpretPackageEnv logger
-        >>= \flags -> GHC.setSessionDynFlags $
-            flags
-                & #backend .~ GHC.Interpreter
-                & #useColor .~ GHC.Always
-                & disableGeneral GHC.Opt_GhciSandbox
-                & filtered (const GHC.hostIsDynamic) %~ addWay' GHC.WayDyn
-                & disableExtension GHC.MonomorphismRestriction
-                & enableExtension GHC.ExtendedDefaultRules
-                & enableExtension GHC.OverloadedStrings
+        >>= \flags ->
+            GHC.setSessionDynFlags $
+                flags
+                    & #backend .~ GHC.Interpreter
+                    & #useColor .~ GHC.Always
+                    & disableGeneral GHC.Opt_GhciSandbox
+                    & filtered (const GHC.hostIsDynamic) %~ addWay' GHC.WayDyn
+                    & disableExtension GHC.MonomorphismRestriction
+                    & enableExtension GHC.ExtendedDefaultRules
+                    & enableExtension GHC.OverloadedStrings
     prelude <- GHC.parseImportDecl "import Dosh.Prelude"
     GHC.setContext
         [ GHC.IIDecl $ prelude{GHC.ideclImplicit = True}
