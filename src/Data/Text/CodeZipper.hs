@@ -40,9 +40,18 @@ currentLine :: Eq t => CodeZipper t -> SourceLine t
 currentLine CodeZipper{tokensBefore, tokensAfter} =
     normaliseToks $ reverse tokensBefore <> tokensAfter
 
+lines :: CodeZipper t -> Int
+lines CodeZipper{linesBefore, linesAfter} = length linesBefore + 1 + length linesAfter
+
 allLines :: Eq t => CodeZipper t -> [SourceLine t]
 allLines cz@CodeZipper{linesBefore, linesAfter} =
     reverse linesBefore <> [currentLine cz] <> linesAfter
+
+row :: CodeZipper t -> Int
+row = length . linesBefore
+
+col :: CodeZipper t -> Int
+col = lineWidth . tokensBefore
 
 currentToken :: Eq t => CodeZipper t -> Maybe (Token t)
 currentToken CodeZipper{tokensBefore = []} = Nothing
@@ -70,7 +79,7 @@ insert :: (Eq t, Pretty t) => Text -> CodeZipper t -> CodeZipper t
 insert t cz@CodeZipper{..} =
     cz
         { tokensAfter = NonEmpty.head insertedLines'
-        , linesAfter = reverse (NonEmpty.tail insertedLines') <> linesAfter
+        , linesAfter = NonEmpty.tail insertedLines' <> linesAfter
         }
         & downN (NonEmpty.length insertedLines - 1)
         & (if length insertedLines > 1 then home else id)

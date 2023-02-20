@@ -82,10 +82,10 @@ cell c = do
                     pure never
                 else do
                     CodeInput{..} <-
-                            codeInput
-                                def
-                                    { _codeInputConfig_value = Just codeZipper
-                                    }
+                        codeInput
+                            def
+                                { _codeInputConfig_value = Just codeZipper
+                                }
                     EvaluateCell <$$> tagPromptlyDyn _codeInput_value <$> enterPressed
     forM_ c.output $ \out ->
         grout (fixed $ pure $ 1 + Text.count "\n" out) $
