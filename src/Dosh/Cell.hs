@@ -75,18 +75,18 @@ cell c = do
     codeZipper <- foldDyn ($) (CZ.fromText "Haskell" c.input) updateEvent
     inputEvent <- grout (fixed $ length . CZ.allLines <$> codeZipper) $ row $ do
         grout (fixed $ pure $ Text.length inPrompt) $ text $ pure inPrompt
-        if c.disabled
-            then do
-                grout flex $ text $ pure c.input
-                pure never
-            else do
-                CodeInput{..} <-
-                    grout flex $
-                        codeInput
-                            def
-                                { _codeInputConfig_value = Just codeZipper
-                                }
-                EvaluateCell <$$> tagPromptlyDyn _codeInput_value <$> enterPressed
+        grout flex $ do
+            if c.disabled
+                then do
+                    text $ pure c.input
+                    pure never
+                else do
+                    CodeInput{..} <-
+                            codeInput
+                                def
+                                    { _codeInputConfig_value = Just codeZipper
+                                    }
+                    EvaluateCell <$$> tagPromptlyDyn _codeInput_value <$> enterPressed
     forM_ c.output $ \out ->
         grout (fixed $ pure $ 1 + Text.count "\n" out) $
             row $ do

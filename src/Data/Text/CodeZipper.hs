@@ -139,21 +139,35 @@ end cz =
         , tokensBefore = reverse $ currentLine cz
         }
 
-deleteLeft :: Eq t => CodeZipper t -> CodeZipper t
-deleteLeft cz@CodeZipper{tokensBefore = []} = cz
+deleteLeft :: (Eq t, Pretty t) => CodeZipper t -> CodeZipper t
+deleteLeft cz@CodeZipper{tokensBefore = [], linesBefore = []} = cz
+deleteLeft cz@CodeZipper{tokensBefore = [], linesBefore = lb : lbs} =
+    cz
+        { linesBefore = lbs
+        , tokensBefore = reverse lb
+        }
+        & prettifyZipper
 deleteLeft cz@CodeZipper{tokensBefore = tb : tbs} =
     cz
         { tokensBefore = normaliseToks $ tb' : tbs
         }
+        & prettifyZipper
   where
     (tb', _) = splitTokenAt (tokenWidth tb - 1) tb
 
-deleteRight :: Eq t => CodeZipper t -> CodeZipper t
-deleteRight cz@CodeZipper{tokensAfter = []} = cz
+deleteRight :: (Eq t, Pretty t) => CodeZipper t -> CodeZipper t
+deleteRight cz@CodeZipper{tokensAfter = [], linesAfter = []} = cz
+deleteRight cz@CodeZipper{tokensAfter = [], linesAfter = la : las} =
+    cz
+        { linesAfter = las
+        , tokensAfter = la
+        }
+        & prettifyZipper
 deleteRight cz@CodeZipper{tokensAfter = ta : tas} =
     cz
         { tokensAfter = normaliseToks $ ta' : tas
         }
+        & prettifyZipper
   where
     (_, ta') = splitTokenAt 1 ta
 
@@ -234,8 +248,7 @@ splitTokenAt' i t = (a, b, c')
     (b, c') = splitTokenAt 1 c
 
 normaliseToks :: Eq t => [Token t] -> [Token t]
-normaliseToks [t] = [t]
-normaliseToks ts = foldr prepend [] ts
+normaliseToks = foldr prepend []
   where
     prepend (_, t) acc | Text.null t = acc
     prepend t [] = [t]

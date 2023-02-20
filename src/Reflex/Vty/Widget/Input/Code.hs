@@ -10,13 +10,13 @@ import Data.Default (Default)
 import Data.Either.Extra (fromRight, maybeToEither)
 import Data.Generics.Labels ()
 import Data.Generics.Product (position)
+import Data.List (uncons)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.CodeZipper (CodeZipper)
 import Data.Text.CodeZipper qualified as CZ
 import Data.Text.Zipper (DisplayLines (..), Span (..), TextAlignment (..))
-import Data.Tuple.Extra (both)
 import GHC.Generics (Generic)
 import Graphics.Vty qualified as V
 import Reflex hiding (tag)
@@ -135,7 +135,12 @@ displayCodeLinesWithAlignment
     -> DisplayLines V.Attr
 displayCodeLinesWithAlignment alignment width tag cursorTag z =
     DisplayLines
-        { _displayLines_spans = lineToSpans <$> zip [0 ..] (CZ.allLines z)
+        { _displayLines_spans =
+            mconcat
+                [ lineToSpans <$> reverse z.linesBefore
+                , [currentLineSpans]
+                , lineToSpans <$> z.linesAfter
+                ]
         , _displayLines_cursorPos = (cursorCol, cursorRow)
         , _displayLines_offsetMap = mempty
         }
@@ -143,24 +148,18 @@ displayCodeLinesWithAlignment alignment width tag cursorTag z =
     cursorRow = length z.linesBefore
     cursorCol = CZ.lineWidth z.tokensBefore
     tokenToSpan (tokenType, code) = highlightSpan tokenType $ Span tag code
-    tokenToCursorSpan = cursorSpan . tokenToSpan
-    lineToSpans (row, line)
-        | row /= cursorRow = tokenToSpan <$> ((NormalTok, "") : line)
-        | otherwise = do
-            let (len, spans) = foldl appendTokenInCursorRow (0, []) line
-            spans ++ [tokenToCursorSpan (NormalTok, " ") | len == cursorCol]
-    tokenWidth = Text.length . snd
-    appendTokenInCursorRow (rowWidth, rowSpans) t =
-        let newWidth = tokenWidth t + rowWidth
-            newSpans = rowSpans ++ tokenToSpansInCursorRow t rowWidth
-         in (newWidth, newSpans)
-    tokenToSpansInCursorRow t col
-        | tokenWidth t == 0 = []
-        | col <= cursorCol && (col + tokenWidth t) > cursorCol =
-            let (a, b, c) = splitTokenAt' tokenCol t
-                tokenCol = cursorCol - col
-             in [tokenToSpan a, tokenToCursorSpan b, tokenToSpan c]
-        | otherwise = [tokenToSpan t]
+    cursorTokenToSpan = cursorSpan . tokenToSpan
+    lineToSpans line = tokenToSpan <$> ((NormalTok, "") : line)
+    (cursorToken, tokensAfter) = fromMaybe ((NormalTok, " "), []) $ do
+        (ta, tas) <- uncons z.tokensAfter
+        let (ct, ta') = CZ.splitTokenAt 1 ta
+        pure (ct, ta' : tas)
+    currentLineSpans =
+        mconcat
+            [ lineToSpans $ reverse z.tokensBefore
+            , [cursorTokenToSpan cursorToken]
+            , lineToSpans tokensAfter
+            ]
 
 cursorSpan :: Span V.Attr -> Span V.Attr
 cursorSpan = position @1 %~ flip V.withStyle V.reverseVideo
@@ -168,50 +167,41 @@ cursorSpan = position @1 %~ flip V.withStyle V.reverseVideo
 nonEmptyToken :: Token -> Token
 nonEmptyToken (tokenType, tokenText) = (tokenType,) $ if Text.null tokenText then " " else tokenText
 
-splitTokenAt :: Int -> Token -> (Token, Token)
-splitTokenAt i (tokenType, tokenText) = both (tokenType,) $ Text.splitAt i tokenText
-
-splitTokenAt' :: Int -> Token -> (Token, Token, Token)
-splitTokenAt' i t = (a, b, c')
-  where
-    (a, c) = splitTokenAt i t
-    (b, c') = splitTokenAt 1 c
-
 highlightSpan :: TokenType -> Span V.Attr -> Span V.Attr
-highlightSpan = maybe id (\c -> position @1 %~ flip V.withForeColor c) . tokenTypeColor
+highlightSpan = (position @1 %~) . tokenAttr
 
-tokenTypeColor :: TokenType -> Maybe V.Color
-tokenTypeColor CharTok = Just $ base08 @DefaultDark
-tokenTypeColor KeywordTok = Just $ base0E @DefaultDark
-tokenTypeColor DataTypeTok = Just $ base0A @DefaultDark
-tokenTypeColor DecValTok = Just $ base09 @DefaultDark
-tokenTypeColor BaseNTok = Just $ base09 @DefaultDark
-tokenTypeColor FloatTok = Just $ base09 @DefaultDark
-tokenTypeColor ConstantTok = Just $ base09 @DefaultDark
-tokenTypeColor SpecialCharTok = Just $ base0F @DefaultDark
-tokenTypeColor StringTok = Just $ base0B @DefaultDark
-tokenTypeColor VerbatimStringTok = Just $ base0B @DefaultDark
-tokenTypeColor SpecialStringTok = Just $ base0B @DefaultDark
-tokenTypeColor ImportTok = Just $ base0D @DefaultDark
-tokenTypeColor CommentTok = Just $ base03 @DefaultDark
-tokenTypeColor DocumentationTok = Just $ base08 @DefaultDark
-tokenTypeColor AnnotationTok = Just $ base0F @DefaultDark
-tokenTypeColor CommentVarTok = Just $ base03 @DefaultDark
-tokenTypeColor OtherTok = Just $ base05 @DefaultDark
-tokenTypeColor FunctionTok = Just $ base0D @DefaultDark
-tokenTypeColor VariableTok = Just $ base08 @DefaultDark
-tokenTypeColor ControlFlowTok = Just $ base0E @DefaultDark
-tokenTypeColor OperatorTok = Just $ base05 @DefaultDark
-tokenTypeColor BuiltInTok = Just $ base0D @DefaultDark
-tokenTypeColor ExtensionTok = Just $ base05 @DefaultDark
-tokenTypeColor PreprocessorTok = Just $ base0A @DefaultDark
-tokenTypeColor AttributeTok = Just $ base0A @DefaultDark
-tokenTypeColor RegionMarkerTok = Just $ base05 @DefaultDark
-tokenTypeColor InformationTok = Just $ base05 @DefaultDark
-tokenTypeColor WarningTok = Just $ base08 @DefaultDark
-tokenTypeColor AlertTok = Just $ base00 @DefaultDark
-tokenTypeColor ErrorTok = Just $ base00 @DefaultDark
-tokenTypeColor NormalTok = Just $ base05 @DefaultDark
+tokenAttr :: TokenType -> V.Attr -> V.Attr
+tokenAttr CharTok = flip V.withForeColor $ base08 @DefaultDark
+tokenAttr KeywordTok = flip V.withForeColor $ base0E @DefaultDark
+tokenAttr DataTypeTok = flip V.withForeColor $ base0A @DefaultDark
+tokenAttr DecValTok = flip V.withForeColor $ base09 @DefaultDark
+tokenAttr BaseNTok = flip V.withForeColor $ base09 @DefaultDark
+tokenAttr FloatTok = flip V.withForeColor $ base09 @DefaultDark
+tokenAttr ConstantTok = flip V.withForeColor $ base09 @DefaultDark
+tokenAttr SpecialCharTok = flip V.withForeColor $ base0F @DefaultDark
+tokenAttr StringTok = flip V.withForeColor $ base0B @DefaultDark
+tokenAttr VerbatimStringTok = flip V.withForeColor $ base0B @DefaultDark
+tokenAttr SpecialStringTok = flip V.withForeColor $ base0B @DefaultDark
+tokenAttr ImportTok = flip V.withForeColor $ base0D @DefaultDark
+tokenAttr CommentTok = flip V.withForeColor $ base03 @DefaultDark
+tokenAttr DocumentationTok = flip V.withForeColor $ base08 @DefaultDark
+tokenAttr AnnotationTok = flip V.withForeColor $ base0F @DefaultDark
+tokenAttr CommentVarTok = flip V.withForeColor $ base03 @DefaultDark
+tokenAttr OtherTok = flip V.withForeColor $ base0A @DefaultDark
+tokenAttr FunctionTok = flip V.withForeColor $ base0D @DefaultDark
+tokenAttr VariableTok = flip V.withForeColor $ base08 @DefaultDark
+tokenAttr ControlFlowTok = flip V.withForeColor $ base0E @DefaultDark
+tokenAttr OperatorTok = flip V.withForeColor $ base05 @DefaultDark
+tokenAttr BuiltInTok = flip V.withForeColor $ base0D @DefaultDark
+tokenAttr ExtensionTok = flip V.withForeColor $ base05 @DefaultDark
+tokenAttr PreprocessorTok = flip V.withForeColor $ base0A @DefaultDark
+tokenAttr AttributeTok = flip V.withForeColor $ base0A @DefaultDark
+tokenAttr RegionMarkerTok = flip V.withForeColor $ base05 @DefaultDark
+tokenAttr InformationTok = flip V.withForeColor $ base05 @DefaultDark
+tokenAttr WarningTok = flip V.withForeColor $ base08 @DefaultDark
+tokenAttr AlertTok = flip V.withForeColor $ base00 @DefaultDark
+tokenAttr ErrorTok = flip V.withForeColor $ base00 @DefaultDark
+tokenAttr NormalTok = flip V.withForeColor $ base05 @DefaultDark
 
 class Base16 a where
     base00 :: V.Color
@@ -242,13 +232,13 @@ instance Base16 DefaultDark where
     base05 = V.rgbColor @Int 0xD8 0xD8 0xD8
     base06 = V.rgbColor @Int 0xE8 0xE8 0xE8
     base07 = V.rgbColor @Int 0xF8 0xF8 0xF8
-    base08 = V.rgbColor @Int 0xAb 0x46 0x42
-    base09 = V.rgbColor @Int 0xDc 0x96 0x56
-    base0A = V.rgbColor @Int 0xF7 0xCa 0x88
-    base0B = V.rgbColor @Int 0xA1 0xB5 0x6c
+    base08 = V.rgbColor @Int 0xAB 0x46 0x42
+    base09 = V.rgbColor @Int 0xDC 0x96 0x56
+    base0A = V.rgbColor @Int 0xF7 0xCA 0x88
+    base0B = V.rgbColor @Int 0xA1 0xB5 0x6C
     base0C = V.rgbColor @Int 0x86 0xC1 0xB9
-    base0D = V.rgbColor @Int 0x7c 0xAf 0xC2
-    base0E = V.rgbColor @Int 0xBa 0x8b 0xAf
+    base0D = V.rgbColor @Int 0x7C 0xAF 0xC2
+    base0E = V.rgbColor @Int 0xBA 0x8B 0xAF
     base0F = V.rgbColor @Int 0xA1 0x69 0x46
 
 {- | Given a width and a 'TextZipper', produce a list of display lines
