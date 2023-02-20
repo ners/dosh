@@ -41,6 +41,10 @@
                 dosh = self.callCabal2nix pname src { };
                 reflex-process = doJailbreak super.reflex-process;
                 reflex-vty = self.callCabal2nix "reflex-vty" inputs.reflex-vty { };
+                haskell-language-server = lib.pipe super.haskell-language-server [
+                  (drv: drv.override { hls-ormolu-plugin = null; })
+                  (drv: disableCabalFlag drv "ormolu")
+                ];
                 resourcet = appendPatch super.resourcet
                   (pkgs.fetchpatch {
                     # export MonadCatch
