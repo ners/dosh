@@ -1,4 +1,12 @@
 {
+  description = "dosh: the power of Haskell in your terminal!";
+
+  nixConfig = {
+    extra-experimental-features = "nix-command flakes";
+    extra-substituters = "https://dosh.cachix.org";
+    extra-trusted-public-keys = "dosh.cachix.org-1:wRNFshU1IQW71/P0ueRqOdPqzsff/eGNl2MNKpsZy/o=";
+  };
+
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
@@ -91,12 +99,13 @@
             devShells.${name} = ps.shellFor {
               packages = ps: [ ps.dosh ];
               withHoogle = true;
-              nativeBuildInputs = with pkgs; with ps; [
+              nativeBuildInputs = with ps; [
                 cabal-fmt
                 cabal-install
                 fourmolu
                 haskell-language-server
-                nixpkgs-fmt
+                pkgs.nixpkgs-fmt
+                pkgs.cachix
               ];
             };
             formatter = pkgs.nixpkgs-fmt;
