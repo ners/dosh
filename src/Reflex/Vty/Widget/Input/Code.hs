@@ -2,19 +2,17 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
 {-# OPTIONS_GHC -Wno-unused-matches #-}
 {-# OPTIONS_GHC -Wno-unused-local-binds #-}
+{-# OPTIONS_GHC -Wno-name-shadowing #-}
 
 module Reflex.Vty.Widget.Input.Code where
 
-import Control.Applicative ((<|>))
 import Control.Lens
 import Control.Monad.Fix (MonadFix)
-import Data.Bool (bool)
 import Data.Default (Default)
 import Data.Either.Extra (fromRight, maybeToEither)
 import Data.Generics.Labels ()
 import Data.Generics.Product (position)
-import Data.Map qualified as Map
-import Data.Maybe (catMaybes, fromMaybe)
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.CodeZipper (CodeZipper)
@@ -26,8 +24,9 @@ import Reflex hiding (tag)
 import Reflex.Vty.Widget
 import Reflex.Vty.Widget.Input.Mouse
 import Reflex.Vty.Widget.Input.Text
-import Skylighting (Color (RGB), Style (..), ToColor (toColor), TokenStyle (..), TokenizerConfig (..), defStyle, defaultSyntaxMap, lookupSyntax, tokenize)
+import Skylighting (TokenizerConfig (..), defaultSyntaxMap, lookupSyntax, tokenize)
 import Skylighting.Types (SourceLine, Token, TokenType (..))
+import Data.Word (Word8)
 
 deriving instance Generic tag => Generic (Span tag)
 
@@ -171,79 +170,78 @@ nonEmptyToken :: Token -> Token
 nonEmptyToken (tokenType, tokenText) = (tokenType,) $ if Text.null tokenText then " " else tokenText
 
 highlightSpan :: TokenType -> Span V.Attr -> Span V.Attr
-highlightSpan = (position @1 %~) . tokenAttr
+highlightSpan = (position @1 %~) . tokenAttr @DefaultDark
 
-tokenAttr :: TokenType -> V.Attr -> V.Attr
-tokenAttr t =
-    foldr (.) id $
-        catMaybes
-            [ fmap (flip V.withForeColor . vColor) $ (tokenStyle >>= tokenColor) <|> Skylighting.defaultColor style
-            , fmap (flip V.withBackColor . vColor) $ tokenStyle >>= tokenBackground
-            , fmap (bool id (`V.withStyle` V.bold)) $ tokenBold <$> tokenStyle
-            , fmap (bool id (`V.withStyle` V.italic)) $ tokenItalic <$> tokenStyle
-            , fmap (bool id (`V.withStyle` V.underline)) $ tokenUnderline <$> tokenStyle
-            ]
-  where
-    style = base16DefaultDark
-    tokenStyle = style.tokenStyles ^. at t
-    vColor (RGB r g b) = V.rgbColor r g b
+tokenAttr :: forall base16. Base16 base16 => TokenType -> V.Attr -> V.Attr
+tokenAttr KeywordTok = flip V.withForeColor (base0E @base16)
+tokenAttr DataTypeTok = flip V.withForeColor (base0A @base16)
+tokenAttr DecValTok = flip V.withForeColor (base09 @base16)
+tokenAttr BaseNTok = flip V.withForeColor (base09 @base16)
+tokenAttr FloatTok = flip V.withForeColor (base09 @base16)
+tokenAttr ConstantTok = flip V.withForeColor (base09 @base16)
+tokenAttr CharTok = flip V.withForeColor (base08 @base16)
+tokenAttr SpecialCharTok = flip V.withForeColor (base0F @base16)
+tokenAttr StringTok = flip V.withForeColor (base0B @base16)
+tokenAttr VerbatimStringTok = flip V.withForeColor (base0B @base16)
+tokenAttr SpecialStringTok = flip V.withForeColor (base0B @base16)
+tokenAttr ImportTok = flip V.withForeColor (base0D @base16)
+tokenAttr CommentTok = flip V.withForeColor (base03 @base16) . flip V.withStyle V.italic
+tokenAttr DocumentationTok = flip V.withForeColor (base08 @base16)
+tokenAttr AnnotationTok = flip V.withForeColor (base0F @base16)
+tokenAttr CommentVarTok = flip V.withForeColor (base03 @base16) . flip V.withStyle V.italic
+tokenAttr OtherTok = flip V.withForeColor (base0A @base16)
+tokenAttr FunctionTok = flip V.withForeColor (base0D @base16)
+tokenAttr VariableTok = flip V.withForeColor (base08 @base16)
+tokenAttr ControlFlowTok = flip V.withForeColor (base0E @base16)
+tokenAttr OperatorTok = flip V.withForeColor (base05 @base16)
+tokenAttr BuiltInTok = flip V.withForeColor (base0D @base16)
+tokenAttr ExtensionTok = flip V.withForeColor (base05 @base16)
+tokenAttr PreprocessorTok = flip V.withForeColor (base0A @base16)
+tokenAttr AttributeTok = flip V.withForeColor (base0A @base16)
+tokenAttr RegionMarkerTok = flip V.withForeColor (base05 @base16)
+tokenAttr InformationTok = flip V.withForeColor (base05 @base16)
+tokenAttr WarningTok = flip V.withForeColor (base08 @base16)
+tokenAttr AlertTok = flip V.withForeColor (base00 @base16)
+tokenAttr ErrorTok = flip V.withForeColor (base00 @base16)
+tokenAttr NormalTok = flip V.withForeColor (base05 @base16)
 
-base16DefaultDark :: Style
-base16DefaultDark =
-    Style
-        { backgroundColor = Nothing
-        , defaultColor = base05
-        , lineNumberColor = Nothing
-        , lineNumberBackgroundColor = Nothing
-        , tokenStyles =
-            Map.fromList
-                [ (KeywordTok, defStyle{tokenColor = base0E})
-                , (DataTypeTok, defStyle{tokenColor = base0A, tokenUnderline = True})
-                , (DecValTok, defStyle{tokenColor = base09})
-                , (BaseNTok, defStyle{tokenColor = base09})
-                , (FloatTok, defStyle{tokenColor = base09})
-                , (CharTok, defStyle{tokenColor = base08})
-                , (StringTok, defStyle{tokenColor = base0B})
-                , (CommentTok, defStyle{tokenColor = base03, tokenItalic = True})
-                , (AlertTok, defStyle{tokenColor = base00})
-                , (FunctionTok, defStyle{tokenColor = base0D})
-                , (ErrorTok, defStyle{tokenColor = base08, tokenBold = True})
-                , (WarningTok, defStyle{tokenColor = base08, tokenBold = True})
-                , (ConstantTok, defStyle{tokenColor = base09})
-                , (SpecialCharTok, defStyle{tokenColor = base0B})
-                , (VerbatimStringTok, defStyle{tokenColor = base0B})
-                , (SpecialStringTok, defStyle{tokenColor = base0B})
-                , (ImportTok, defStyle{tokenColor = base0D})
-                , (VariableTok, defStyle{tokenColor = base08})
-                , (ControlFlowTok, defStyle{tokenColor = base0E})
-                , (OperatorTok, defStyle{tokenColor=base05})
-                , (BuiltInTok, defStyle{tokenColor = base0D})
-                , (ExtensionTok, defStyle{tokenColor = base05})
-                , (PreprocessorTok, defStyle{tokenColor = base0A})
-                , (AttributeTok, defStyle{tokenColor = base0A})
-                , (DocumentationTok, defStyle{tokenColor = base08, tokenItalic = True})
-                , (AnnotationTok, defStyle{tokenColor = base0F, tokenItalic = True})
-                , (CommentTok, defStyle{tokenColor = base03, tokenItalic = True})
-                , (InformationTok, defStyle{tokenColor = base03, tokenItalic = True})
-                ]
-        }
-    where
-        base00 = toColor @Int 0x181818
-        base01 = toColor @Int 0x282828
-        base02 = toColor @Int 0x383838
-        base03 = toColor @Int 0x585858
-        base04 = toColor @Int 0xb8b8b8
-        base05 = toColor @Int 0xd8d8d8
-        base06 = toColor @Int 0xe8e8e8
-        base07 = toColor @Int 0xf8f8f8
-        base08 = toColor @Int 0xab4642
-        base09 = toColor @Int 0xdc9656
-        base0A = toColor @Int 0xf7ca88
-        base0B = toColor @Int 0xa1b56c
-        base0C = toColor @Int 0x86c1b9
-        base0D = toColor @Int 0x7cafc2
-        base0E = toColor @Int 0xba8baf
-        base0F = toColor @Int 0xa16946
+class Base16 base16 where
+    base00 :: V.Color
+    base01 :: V.Color
+    base02 :: V.Color
+    base03 :: V.Color
+    base04 :: V.Color
+    base05 :: V.Color
+    base06 :: V.Color
+    base07 :: V.Color
+    base08 :: V.Color
+    base09 :: V.Color
+    base0A :: V.Color
+    base0B :: V.Color
+    base0C :: V.Color
+    base0D :: V.Color
+    base0E :: V.Color
+    base0F :: V.Color
+
+data DefaultDark
+
+instance Base16 DefaultDark where
+    base00 = V.linearColor @Word8 0x18 0x18 0x18
+    base01 = V.linearColor @Word8 0x28 0x28 0x28
+    base02 = V.linearColor @Word8 0x38 0x38 0x38
+    base03 = V.linearColor @Word8 0x58 0x58 0x58
+    base04 = V.linearColor @Word8 0xB8 0xB8 0xB8
+    base05 = V.linearColor @Word8 0xD8 0xD8 0xD8
+    base06 = V.linearColor @Word8 0xE8 0xE8 0xE8
+    base07 = V.linearColor @Word8 0xF8 0xF8 0xF8
+    base08 = V.linearColor @Word8 0xAB 0x46 0x42
+    base09 = V.linearColor @Word8 0xDC 0x96 0x56
+    base0A = V.linearColor @Word8 0xF7 0xCA 0x88
+    base0B = V.linearColor @Word8 0xA1 0xB5 0x6C
+    base0C = V.linearColor @Word8 0x86 0xC1 0xB9
+    base0D = V.linearColor @Word8 0x7C 0xAF 0xC2
+    base0E = V.linearColor @Word8 0xBA 0x8B 0xAF
+    base0F = V.linearColor @Word8 0xA1 0x69 0x46
 
 {- | Given a width and a 'TextZipper', produce a list of display lines
  (i.e., lines of wrapped text) with special attributes applied to

@@ -1,4 +1,5 @@
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 module Dosh.Notebook where
 
