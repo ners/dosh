@@ -6,6 +6,7 @@
 
 module Reflex.Vty.Widget.Input.Code where
 
+import Control.Arrow ((>>>))
 import Control.Lens
 import Control.Monad.Fix (MonadFix)
 import Data.Default (Default)
@@ -27,7 +28,6 @@ import Reflex.Vty.Widget.Input.Mouse
 import Reflex.Vty.Widget.Input.Text
 import Skylighting (TokenizerConfig (..), defaultSyntaxMap, lookupSyntax, tokenize)
 import Skylighting.Types (Token, TokenType (..))
-import Control.Arrow ((>>>))
 
 deriving instance Generic tag => Generic (Span tag)
 

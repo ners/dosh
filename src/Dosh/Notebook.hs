@@ -17,6 +17,7 @@ import Data.Traversable (for)
 import Data.UUID (UUID)
 import Data.UUID.V4 qualified as UUID
 import Dosh.Cell
+import Dosh.Cell qualified as Cell
 import Dosh.GHC.Client qualified as GHC
 import Dosh.Util
 import GHC.Data.Maybe (isJust)
@@ -24,7 +25,6 @@ import GHC.Exts (IsList (toList))
 import GHC.Generics (Generic)
 import Reflex hiding (Query, Response)
 import Reflex.Vty hiding (Query, Response)
-import qualified Dosh.Cell as Cell
 
 data Notebook = Notebook
     { cells :: HashMap UUID Cell
@@ -32,7 +32,7 @@ data Notebook = Notebook
     , nextCellNumber :: Int
     , disabled :: Bool
     }
-    deriving stock (Generic, Show)
+    deriving stock (Generic, Eq, Show)
 
 newNotebook :: MonadIO m => m Notebook
 newNotebook =
@@ -44,9 +44,12 @@ newNotebook =
         }
         & createCell (#disabled .~ False)
 
+-- | Create a new cell with a random UUID.
 createCell :: MonadIO m => (Cell -> Cell) -> Notebook -> m Notebook
 createCell f n = (n &) . createCell' . const . f <$> newCell n.nextCellNumber
 
+-- | Create a new cell with an empty UUID.
+-- You almost certainly want to call this with a transformation that sets the UUID.
 createCell' :: (Cell -> Cell) -> Notebook -> Notebook
 createCell' f n =
     n
@@ -104,15 +107,14 @@ handleCellEvent
     -> UUID
     -> CellEvent
     -> m (Notebook -> Notebook)
-handleCellEvent _ uid (UpdateCellInput content) = pure $ #cells . ix uid . #input .~ content
+handleCellEvent _ uid (UpdateCellInput update) = pure $ #cells . ix uid . #input %~ update
 handleCellEvent ghc uid (EvaluateCell content) = do
     liftIO $ ghc.query GHC.Query{uid, content = CZ.toText content}
     newCellUid <- liftIO UUID.nextRandom
-    handleCellEvent ghc uid (UpdateCellInput content) <&> \updateInput cell -> do
-        updateInput cell
-            & updateNumbers
-            & filtered shouldCreateNewCell %~ createNewCell newCellUid
-            & #cells . ix uid %~ \c -> c{output = Nothing, error = Nothing, Cell.disabled = True, evaluated = True}
+    pure $
+        updateNumbers
+            >>> filtered shouldCreateNewCell %~ createNewCell newCellUid
+            >>> #cells . ix uid %~ \c -> c{output = Nothing, error = Nothing, Cell.disabled = True, evaluated = True}
   where
     cellEvaluated :: Notebook -> Bool
     cellEvaluated = maybe False evaluated . view (#cells . at uid)
@@ -130,11 +132,12 @@ handleCellEvent ghc uid (EvaluateCell content) = do
             & #cells . traverse . filtered (not . evaluated) . #number %~ (+ 1)
             & #cells . ix uid . #number .~ n.nextCellNumber
             & #nextCellNumber %~ (+ 1)
-handleCellEvent _ _ GoToPreviousCell =
-    pure $ ifHavePrev $
-        overCurrentCell (#disabled .~ True)
-            >>> #cellOrder %~ SZ.back
-            >>> overCurrentCell (#disabled .~ False)
+handleCellEvent _ _ GoToPreviousCell = do
+    pure $
+        ifHavePrev $
+            overCurrentCell (#disabled .~ True)
+                >>> #cellOrder %~ SZ.back
+                >>> overCurrentCell (#disabled .~ False)
   where
     havePrev = not . null . SZ.before . cellOrder
     ifHavePrev f n = if havePrev n then f n else n

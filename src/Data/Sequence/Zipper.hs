@@ -12,7 +12,7 @@ data SeqZipper t = SeqZipper
     { before :: Seq t
     , after :: Seq t
     }
-    deriving stock (Generic, Show)
+    deriving stock (Generic, Eq, Show)
 
 instance Semigroup (SeqZipper t) where
     a <> b = SeqZipper{before = before a, after = after a <> before b <> after b}

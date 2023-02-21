@@ -32,7 +32,7 @@ data Cell = Cell
     , disabled :: Bool
     , evaluated :: Bool
     }
-    deriving stock (Show, Generic)
+    deriving stock (Generic, Eq, Show)
 
 newCell :: MonadIO m => Int -> m Cell
 newCell number = do
@@ -52,11 +52,10 @@ instance Default Cell where
             }
 
 data CellEvent
-    = UpdateCellInput (CodeZipper TokenType)
+    = UpdateCellInput (CodeZipper TokenType -> CodeZipper TokenType)
     | EvaluateCell (CodeZipper TokenType)
     | GoToPreviousCell
     | GoToNextCell
-    deriving stock (Show)
 
 cell
     :: forall t m
@@ -79,23 +78,28 @@ cell
     -> m (Event t CellEvent)
 cell c = do
     (cellEvent, triggerCellEvent) <- newTriggerEvent @t @m @CellEvent
-    (zipperEvent, updateZipper) <- newTriggerEvent @t @m @(CodeZipper TokenType -> CodeZipper TokenType)
     let inPrompt = mconcat [if c.evaluated then "*" else " ", "In[", tshow c.number, "]: "]
     let outPrompt = "Out[" <> tshow c.number <> "]: "
     let errPrompt = "Err[" <> tshow c.number <> "]: "
-    codeZipper <- foldDyn ($) c.input zipperEvent
     unless c.disabled $ do
         vtyInput :: Event t VtyEvent <- Reflex.Vty.input
         dh :: Dynamic t Int <- displayHeight
+        let updateZipper = triggerCellEvent . UpdateCellInput
         void $
             performEvent $
-                (current codeZipper, current dh) `attach2` vtyInput <&> \(cz, dh, ev) -> liftIO $ case ev of
+                current dh `attach` vtyInput <&> \(dh, ev) -> liftIO $ case ev of
                     -- Delete character in zipper
                     V.EvKey V.KBS [] -> updateZipper CZ.deleteLeft
                     V.EvKey V.KDel [] -> updateZipper CZ.deleteRight
                     -- Movement in zipper and between cells
-                    V.EvKey V.KUp [] -> if null cz.linesBefore then triggerCellEvent GoToPreviousCell else updateZipper CZ.up
-                    V.EvKey V.KDown [] -> if null cz.linesAfter then triggerCellEvent GoToNextCell else updateZipper CZ.down
+                    V.EvKey V.KUp [] ->
+                        if null c.input.linesBefore
+                            then triggerCellEvent GoToPreviousCell
+                            else updateZipper CZ.up
+                    V.EvKey V.KDown [] ->
+                        if null c.input.linesAfter
+                            then triggerCellEvent GoToNextCell
+                            else updateZipper CZ.down
                     V.EvKey V.KLeft [] -> updateZipper CZ.left
                     V.EvKey V.KRight [] -> updateZipper CZ.right
                     V.EvKey V.KHome [] -> updateZipper CZ.home
@@ -103,17 +107,19 @@ cell c = do
                     V.EvKey V.KPageUp [] -> updateZipper $ CZ.upN dh
                     V.EvKey V.KPageDown [] -> updateZipper $ CZ.downN dh
                     -- Insert characters into zipper
-                    V.EvKey V.KEnter [] -> triggerCellEvent $ EvaluateCell cz
+                    V.EvKey V.KEnter [] -> triggerCellEvent $ EvaluateCell c.input
                     V.EvKey V.KEnter [V.MMeta] -> updateZipper $ CZ.insertChar '\n'
                     V.EvKey (V.KChar k) [] -> updateZipper $ CZ.insertChar k
                     _ -> pure ()
-    void $ grout (fixed $ length . CZ.allLines <$> codeZipper) $ row $ do
+    void $ grout (fixed $ pure $ CZ.lines c.input) $ row $ do
         grout (fixed $ pure $ Text.length inPrompt) $ text $ pure inPrompt
-        void $ grout flex $ codeInput
-            def
-                { _codeInputConfig_value = Just codeZipper
-                , _codeInputConfig_showCursor = not c.disabled
-                }
+        void $
+            grout flex $
+                codeInput
+                    def
+                        { _codeInputConfig_value = Just $ pure c.input
+                        , _codeInputConfig_showCursor = not c.disabled
+                        }
     forM_ c.output $ \out ->
         grout (fixed $ pure $ 1 + Text.count "\n" out) $
             row $ do
