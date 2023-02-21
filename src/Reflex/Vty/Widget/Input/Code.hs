@@ -1,8 +1,8 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
-{-# OPTIONS_GHC -Wno-orphans #-}
-{-# OPTIONS_GHC -Wno-unused-matches #-}
-{-# OPTIONS_GHC -Wno-unused-local-binds #-}
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
+{-# OPTIONS_GHC -Wno-unused-local-binds #-}
+{-# OPTIONS_GHC -Wno-unused-matches #-}
 
 module Reflex.Vty.Widget.Input.Code where
 
@@ -18,6 +18,7 @@ import Data.Text qualified as Text
 import Data.Text.CodeZipper (CodeZipper)
 import Data.Text.CodeZipper qualified as CZ
 import Data.Text.Zipper (DisplayLines (..), Span (..), TextAlignment (..))
+import Data.Word (Word8)
 import GHC.Generics (Generic)
 import Graphics.Vty qualified as V
 import Reflex hiding (tag)
@@ -25,12 +26,21 @@ import Reflex.Vty.Widget
 import Reflex.Vty.Widget.Input.Mouse
 import Reflex.Vty.Widget.Input.Text
 import Skylighting (TokenizerConfig (..), defaultSyntaxMap, lookupSyntax, tokenize)
-import Skylighting.Types (SourceLine, Token, TokenType (..))
-import Data.Word (Word8)
+import Skylighting.Types (Token, TokenType (..))
+import Control.Arrow ((>>>))
 
 deriving instance Generic tag => Generic (Span tag)
 
-instance CZ.Pretty TokenType where prettify = highlight
+instance CZ.Pretty TokenType where
+    prettify lang code = fromRight plain $ do
+        syntax <- maybeToEither @String "Syntax not found" $ lookupSyntax lang defaultSyntaxMap
+        let cfg = TokenizerConfig{syntaxMap = defaultSyntaxMap, traceOutput = False}
+        case tokenize cfg syntax (code <> "\n") of
+            Left _ -> Left "Tokenize failed"
+            Right [] -> Left "No tokens produced"
+            Right x -> Right x
+      where
+        plain = [(NormalTok,) <$> Text.lines (code <> "\n")]
 
 data CodeInputConfig t = CodeInputConfig
     { _codeInputConfig_initialValue :: CodeZipper TokenType
@@ -38,6 +48,7 @@ data CodeInputConfig t = CodeInputConfig
     , _codeInputConfig_modify :: Event t (CodeZipper TokenType -> CodeZipper TokenType)
     , _codeInputConfig_tabWidth :: Int
     , _codeInputConfig_display :: Dynamic t (Char -> Char)
+    , _codeInputConfig_showCursor :: Bool
     }
 
 instance Reflex t => Default (CodeInputConfig t) where
@@ -48,6 +59,7 @@ instance Reflex t => Default (CodeInputConfig t) where
             , _codeInputConfig_modify = never
             , _codeInputConfig_tabWidth = 4
             , _codeInputConfig_display = pure id
+            , _codeInputConfig_showCursor = True
             }
 
 data CodeInput t = CodeInput
@@ -95,7 +107,7 @@ codeInput cfg = mdo
         rowInputDyn = (,,) <$> dw <*> v <*> f
         toDisplayLines :: V.Attr -> (Int, CodeZipper TokenType, Bool) -> DisplayLines V.Attr
         toDisplayLines attr (w, s, x) =
-            let c = if x then toCursorAttrs attr else attr
+            let c = if cfg._codeInputConfig_showCursor then (`V.withStyle` V.reverseVideo) else id
              in displayCodeLines w attr c s
     attrDyn <- holdDyn attr0 $ pushAlways (\_ -> sample bt) (updated rowInputDyn)
     let rows = ffor2 attrDyn rowInputDyn toDisplayLines
@@ -130,7 +142,7 @@ displayCodeLinesWithAlignment
     -- ^ Width, used for wrapping
     -> V.Attr
     -- ^ Metadata for normal characters
-    -> V.Attr
+    -> (V.Attr -> V.Attr)
     -- ^ Metadata for the cursor
     -> CodeZipper TokenType
     -- ^ The text input contents and cursor state
@@ -150,7 +162,7 @@ displayCodeLinesWithAlignment alignment width tag cursorTag z =
     cursorRow = length z.linesBefore
     cursorCol = CZ.lineWidth z.tokensBefore
     tokenToSpan (tokenType, code) = highlightSpan tokenType $ Span tag code
-    cursorTokenToSpan = cursorSpan . tokenToSpan
+    cursorTokenToSpan = tokenToSpan >>> position @1 %~ cursorTag
     lineToSpans line = tokenToSpan <$> ((NormalTok, "") : line)
     (cursorToken, tokensAfter) = fromMaybe ((NormalTok, " "), []) $ do
         (ta, tas) <- uncons z.tokensAfter
@@ -162,9 +174,6 @@ displayCodeLinesWithAlignment alignment width tag cursorTag z =
             , [cursorTokenToSpan cursorToken]
             , lineToSpans tokensAfter
             ]
-
-cursorSpan :: Span V.Attr -> Span V.Attr
-cursorSpan = position @1 %~ flip V.withStyle V.reverseVideo
 
 nonEmptyToken :: Token -> Token
 nonEmptyToken (tokenType, tokenText) = (tokenType,) $ if Text.null tokenText then " " else tokenText
@@ -254,23 +263,12 @@ displayCodeLines
     -- ^ Width, used for wrapping
     -> V.Attr
     -- ^ Metadata for normal characters
-    -> V.Attr
+    -> (V.Attr -> V.Attr)
     -- ^ Metadata for the cursor
     -> CodeZipper TokenType
     -- ^ The text input contents and cursor state
     -> DisplayLines V.Attr
 displayCodeLines = displayCodeLinesWithAlignment TextAlignment_Left
-
-highlight :: Text -> Text -> [SourceLine]
-highlight lang code = fromRight plain $ do
-    syntax <- maybeToEither @String "Syntax not found" $ lookupSyntax lang defaultSyntaxMap
-    let cfg = TokenizerConfig{syntaxMap = defaultSyntaxMap, traceOutput = False}
-    case tokenize cfg syntax (code <> "\n") of
-        Left _ -> Left "Tokenize failed"
-        Right [] -> Left "No tokens produced"
-        Right x -> Right x
-  where
-    plain = [(NormalTok,) <$> Text.lines (code <> "\n")]
 
 -- | Default vty event handler for text inputs
 updateCodeZipper
@@ -286,6 +284,7 @@ updateCodeZipper
 updateCodeZipper tabWidth pageSize ev = case ev of
     -- Special characters
     V.EvKey (V.KChar '\t') [] -> CZ.insertChar '\t'
+    V.EvKey V.KEnter [] -> CZ.insertChar '\n'
     -- Regular characters
     V.EvKey (V.KChar k) [] -> CZ.insertChar k
     -- Deletion buttons

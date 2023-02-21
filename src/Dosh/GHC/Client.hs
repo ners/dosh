@@ -23,6 +23,7 @@ import Data.String (IsString (..))
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.IO qualified as Text
+import Data.UUID (UUID)
 import Dosh.GHC.Server (Server (..))
 import Dosh.Util
 import GHC qualified
@@ -31,15 +32,15 @@ import GHC.Generics (Generic)
 import Reflex hiding (Query, Response)
 
 data Query = Query
-    { id :: Int
+    { uid :: UUID
     , content :: Text
     }
 
 data Response
-    = FullResponse {id :: Int, content :: Text}
-    | PartialResponse {id :: Int, content :: Text}
-    | Error {id :: Int, error :: SomeException}
-    | EndResponse {id :: Int}
+    = FullResponse {uid :: UUID, content :: Text}
+    | PartialResponse {uid :: UUID, content :: Text}
+    | Error {uid :: UUID, error :: SomeException}
+    | EndResponse {uid :: UUID}
 
 data Client t = Client
     { query :: Query -> IO ()
@@ -60,7 +61,7 @@ client ghc = do
     (onQuery, query) <- newTriggerEvent
     (onResponse, respond) <- newTriggerEvent
     performEvent $
-        onQuery <&> \Query{id, content} -> liftIO $ ghc.input $ do
+        onQuery <&> \Query{..} -> liftIO $ ghc.input $ do
             let exec = do
                     forM_ (splitCommands content) $ \case
                         Import s -> do
@@ -71,9 +72,9 @@ client ghc = do
                     GHC.execStmt "mapM_ hFlush [stdout, stderr]" GHC.execOptions
             let log = forever $ liftIO $ do
                     content <- Text.hGetLine ghc.output <&> (<> "\n")
-                    respond PartialResponse{id, content}
-            raceWithDelay_ 1000 exec log `catch` \error -> liftIO (respond Error{id, error})
-            liftIO $ respond EndResponse{id}
+                    respond PartialResponse{..}
+            raceWithDelay_ 1000 exec log `catch` \error -> liftIO (respond Error{..})
+            liftIO $ respond EndResponse{..}
     pure Client{..}
 
 deriving via (ReaderT Session IO) instance MonadBase IO Ghc

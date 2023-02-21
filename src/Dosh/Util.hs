@@ -2,6 +2,7 @@ module Dosh.Util where
 
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async.Lifted (race_)
+import Control.Lens
 import Control.Monad.Base (liftBase)
 import Control.Monad.Trans.Control (MonadBaseControl)
 import Data.Map (Map)
@@ -81,3 +82,9 @@ raceWithDelay_ :: MonadBaseControl IO m => Int -> m a -> m b -> m ()
 raceWithDelay_ d a b = race_ (a <* delay') (b <* delay')
   where
     delay' = liftBase $ threadDelay d
+
+attach2 :: Reflex t => (Behavior t a, Behavior t b) -> Event t c -> Event t (a, b, c)
+attach2 (b1, b2) e = attach b1 (attach b2 e) <&> \(a, (b, c)) -> (a, b, c)
+
+attach3 :: Reflex t => (Behavior t a, Behavior t b, Behavior t c) -> Event t d -> Event t (a, b, c, d)
+attach3 (b1, b2, b3) e = attach b1 (attach2 (b2, b3) e) <&> \(a, (b, c, d)) -> (a, b, c, d)

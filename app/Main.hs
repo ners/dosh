@@ -13,8 +13,9 @@ main :: IO ()
 main = mainWidget $ do
     ghcServer <- GHC.server
     ghcClient <- GHC.client ghcServer
+    initialNotebook <- newNotebook
     initManager_ $ mdo
-        dn <- holdDyn newNotebook u
+        dn :: Dynamic t Notebook <- holdDyn initialNotebook u
         u <- networkView (notebook ghcClient <$> dn) >>= switchHold never
         -- grout flex $ text $ tshow <$> current dn
         void <$> ctrldPressed

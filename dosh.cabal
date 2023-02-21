@@ -46,6 +46,7 @@ library
     hs-source-dirs:   src
     exposed-modules:
         Data.Text.CodeZipper,
+        Data.Sequence.Zipper,
         Dosh.Cell,
         Dosh.GHC.Client,
         Dosh.GHC.Server,
@@ -58,6 +59,7 @@ library
         Reflex.Vty.Widget.Input.Code
     build-depends:
         containers,
+        unordered-containers,
         deepseq,
         exceptions,
         extra,
@@ -78,6 +80,7 @@ library
         skylighting,
         skylighting-core,
         transformers-base,
+        uuid,
         vty
 
 executable dosh
@@ -110,3 +113,4 @@ test-suite dosh-test
         vty
     other-modules:
         Data.Text.CodeZipperSpec,
+    build-tools-depends: hspec-discover:hspec-discover
