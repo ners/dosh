@@ -155,5 +155,5 @@ handleGhcResponse :: GHC.Response -> (UUID, Cell -> Cell)
 handleGhcResponse r = (r.uid,) $ case r of
     GHC.FullResponse{content} -> #output ?~ content
     GHC.PartialResponse{content} -> #output %~ (Just . (<> content) . fromMaybe "")
-    GHC.Error{error} -> #error ?~ bshow error
+    GHC.Error{error} -> #error ?~ tshow error
     GHC.EndResponse{} -> #disabled .~ False

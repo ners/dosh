@@ -31,7 +31,7 @@ data Cell = Cell
     , number :: Int
     , input :: CodeZipper
     , output :: Maybe ByteString
-    , error :: Maybe ByteString
+    , error :: Maybe Text
     , disabled :: Bool
     , evaluated :: Bool
     }
@@ -134,10 +134,13 @@ cell c = do
                     }
     forM_ c.output $ \out -> do
         blankLine
-        grout flex $ row $ do
+        let (height, content) = case Text.decodeUtf8' out of
+                Right utf8 -> (length $ Text.lines utf8, text $ pure utf8)
+                Left _ -> (10, display $ pure out)
+        grout (fixed $ pure height) $ row $ do
             grout (fixed $ pure $ Text.length outPrompt) $ text $ pure outPrompt
-            grout flex $ display $ pure out
-    forM_ c.error $ \(Text.decodeUtf8 -> err) -> do
+            grout flex content
+    forM_ c.error $ \err -> do
         blankLine
         grout (fixed $ pure $ length $ Text.lines err) $ row $ do
             grout (fixed $ pure $ Text.length errPrompt) $ text $ pure errPrompt
