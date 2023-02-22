@@ -44,7 +44,7 @@ instance Default Cell where
         Cell
             { uid = UUID.nil
             , number = 0
-            , input = CZ.fromText "Haskell" ""
+            , input = CZ.empty{CZ.language = "Haskell"}
             , output = Nothing
             , error = Nothing
             , disabled = True
@@ -109,6 +109,7 @@ cell c = do
                     -- Insert characters into zipper
                     V.EvKey V.KEnter [] -> triggerCellEvent $ EvaluateCell c.input
                     V.EvKey V.KEnter [V.MMeta] -> updateZipper $ CZ.insertChar '\n'
+                    V.EvKey (V.KChar '\t') [] -> updateZipper $ CZ.insert $ Text.replicate (1 + ((CZ.col c.input + 1) `mod` 4)) " "
                     V.EvKey (V.KChar k) [] -> updateZipper $ CZ.insertChar k
                     _ -> pure ()
     void $ grout (fixed $ pure $ CZ.lines c.input) $ row $ do

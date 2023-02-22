@@ -6,13 +6,15 @@
 
 module Reflex.Vty.Widget.Input.Code where
 
-import Control.Arrow ((>>>))
+import Control.Arrow (first, (>>>))
 import Control.Lens
 import Control.Monad.Fix (MonadFix)
 import Data.Default (Default)
-import Data.Either.Extra (fromRight, maybeToEither)
+import Data.Either.Extra (eitherToMaybe, maybeToEither)
 import Data.Generics.Labels ()
 import Data.Generics.Product (position)
+import Data.List (intersperse)
+import Data.List.Extra qualified
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as Text
@@ -21,6 +23,7 @@ import Data.Text.CodeZipper qualified as CZ
 import Data.Text.Zipper (DisplayLines (..), Span (..), TextAlignment (..))
 import Data.Word (Word8)
 import GHC.Generics (Generic)
+import GHC.SyntaxHighlighter qualified as GS
 import Graphics.Vty qualified as V
 import Reflex hiding (tag)
 import Reflex.Vty.Widget
@@ -31,16 +34,43 @@ import Skylighting.Types (Token, TokenType (..))
 
 deriving instance Generic tag => Generic (Span tag)
 
+type SourceLine = CZ.SourceLine TokenType
+
 instance CZ.Pretty TokenType where
-    prettify lang code = fromRight plain $ do
-        syntax <- maybeToEither @String "Syntax not found" $ lookupSyntax lang defaultSyntaxMap
-        let cfg = TokenizerConfig{syntaxMap = defaultSyntaxMap, traceOutput = False}
-        case tokenize cfg syntax (code <> "\n") of
-            Left _ -> Left "Tokenize failed"
-            Right [] -> Left "No tokens produced"
-            Right x -> Right x
-      where
-        plain = [(NormalTok,) <$> Text.lines (code <> "\n")]
+    plain code = [[(NormalTok, line)] | line <- Text.splitOn "\n" code]
+    pretty "Haskell" = ghcHighlight
+    pretty lang = skylight lang
+
+skylight :: Text -> Text -> Maybe [SourceLine]
+skylight lang code = eitherToMaybe $ do
+    syntax <- maybeToEither @String "Syntax not found" $ lookupSyntax lang defaultSyntaxMap
+    let cfg = TokenizerConfig{syntaxMap = defaultSyntaxMap, traceOutput = False}
+    case tokenize cfg syntax (code <> "\n") of
+        Left _ -> Left "Tokenize failed"
+        Right [] -> Left "No tokens produced"
+        Right x -> Right x
+
+ghcHighlight :: Text -> Maybe [SourceLine]
+ghcHighlight code = fmap CZ.normaliseToks . gsTokensToLines <$> GS.tokenizeHaskell code
+  where
+    gsTokensToLines :: [(GS.Token, Text)] -> [SourceLine]
+    gsTokensToLines = Data.List.Extra.split (\(_, tokenText) -> tokenText == "\n") . concatMap splitTokenLines . fmap (first gs2tok)
+    splitTokenLines :: Token -> [Token]
+    splitTokenLines (tokenType, tokenText) = (tokenType,) <$> (intersperse "\n" . Text.splitOn "\n") tokenText
+    gs2tok :: GS.Token -> TokenType
+    gs2tok GS.CharTok = CharTok
+    gs2tok GS.CommentTok = CommentTok
+    gs2tok GS.ConstructorTok = FunctionTok
+    gs2tok GS.IntegerTok = ConstantTok
+    gs2tok GS.KeywordTok = KeywordTok
+    gs2tok GS.OperatorTok = OperatorTok
+    gs2tok GS.OtherTok = OtherTok
+    gs2tok GS.PragmaTok = PreprocessorTok
+    gs2tok GS.RationalTok = FloatTok
+    gs2tok GS.SpaceTok = NormalTok
+    gs2tok GS.StringTok = StringTok
+    gs2tok GS.SymbolTok = OperatorTok
+    gs2tok GS.VariableTok = VariableTok
 
 data CodeInputConfig t = CodeInputConfig
     { _codeInputConfig_initialValue :: CodeZipper TokenType
@@ -54,7 +84,7 @@ data CodeInputConfig t = CodeInputConfig
 instance Reflex t => Default (CodeInputConfig t) where
     def =
         CodeInputConfig
-            { _codeInputConfig_initialValue = CZ.fromText "" ""
+            { _codeInputConfig_initialValue = CZ.empty
             , _codeInputConfig_value = Nothing
             , _codeInputConfig_modify = never
             , _codeInputConfig_tabWidth = 4

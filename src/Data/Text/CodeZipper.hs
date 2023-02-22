@@ -1,6 +1,9 @@
+{-# LANGUAGE ViewPatterns #-}
+
 module Data.Text.CodeZipper where
 
 import Data.Function ((&))
+import Data.Functor ((<&>))
 import Data.List (uncons)
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.List.NonEmpty qualified as NonEmpty
@@ -13,7 +16,8 @@ type Token t = (t, Text)
 type SourceLine t = [Token t]
 
 class Pretty t where
-    prettify :: Text -> Text -> [SourceLine t]
+    plain :: Text -> [SourceLine t]
+    pretty :: Text -> Text -> Maybe [SourceLine t]
 
 data CodeZipper t = CodeZipper
     { language :: Text
@@ -24,17 +28,23 @@ data CodeZipper t = CodeZipper
     }
     deriving (Eq, Show)
 
-fromText :: Pretty t => Text -> Text -> CodeZipper t
-fromText language t =
+empty :: CodeZipper t
+empty =
     CodeZipper
-        { language
-        , linesBefore = []
-        , linesAfter
-        , tokensBefore = []
-        , tokensAfter
+        { language = ""
+        , linesBefore = mempty
+        , linesAfter = mempty
+        , tokensBefore = mempty
+        , tokensAfter = mempty
         }
+
+plainZipper :: Pretty t => Text -> CodeZipper t
+plainZipper t = empty{linesAfter, tokensAfter}
   where
-    (tokensAfter, linesAfter) = fromMaybe ([], []) $ uncons (prettify language t)
+    (tokensAfter, linesAfter) = fromMaybe ([], []) $ uncons (plain t)
+
+prettyZipper :: Pretty t => Text -> Text -> Maybe (CodeZipper t)
+prettyZipper language t = pretty language t <&> \(fromMaybe ([], []) . uncons -> (tokensAfter, linesAfter)) -> empty{language, tokensAfter, linesAfter}
 
 currentLine :: Eq t => CodeZipper t -> SourceLine t
 currentLine CodeZipper{tokensBefore, tokensAfter} =
@@ -86,15 +96,14 @@ insert t cz@CodeZipper{..} =
         & rightN (lineWidth $ NonEmpty.last insertedLines)
         & prettifyZipper
   where
-    insertedLines = uncurry (:|) $ fromMaybe ([], []) $ uncons (prettify language t)
+    insertedLines = uncurry (:|) $ fromMaybe ([], []) $ uncons (plain t)
     insertedLines' = insertedLines & overLast (<> tokensAfter)
 
 prettifyZipper :: (Eq t, Pretty t) => CodeZipper t -> CodeZipper t
-prettifyZipper cz@CodeZipper{language, linesBefore, tokensBefore} =
-    toText cz
-        & fromText language
-        & downN (length linesBefore)
-        & rightN (lineWidth tokensBefore)
+prettifyZipper cz@CodeZipper{language} =
+    maybe cz (rightN (col cz) . downN (row cz)) $
+        prettyZipper language $
+            toText cz
 
 overLast :: (a -> a) -> NonEmpty a -> NonEmpty a
 overLast f = NonEmpty.reverse . (\(x :| xs) -> f x :| xs) . NonEmpty.reverse

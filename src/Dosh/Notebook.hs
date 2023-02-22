@@ -48,8 +48,9 @@ newNotebook =
 createCell :: MonadIO m => (Cell -> Cell) -> Notebook -> m Notebook
 createCell f n = (n &) . createCell' . const . f <$> newCell n.nextCellNumber
 
--- | Create a new cell with an empty UUID.
--- You almost certainly want to call this with a transformation that sets the UUID.
+{- | Create a new cell with an empty UUID.
+ You almost certainly want to call this with a transformation that sets the UUID.
+-}
 createCell' :: (Cell -> Cell) -> Notebook -> Notebook
 createCell' f n =
     n

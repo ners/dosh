@@ -17,5 +17,5 @@ main = mainWidget $ do
     initManager_ $ mdo
         dn :: Dynamic t Notebook <- holdDyn initialNotebook u
         u :: Event t Notebook <- holdUniqDyn dn >>= networkView . fmap (notebook ghcClient) >>= switchHold never
-        -- grout flex $ text $ tshow <$> current dn
+        --grout flex $ text $ tshow <$> current dn
         void <$> ctrldPressed
