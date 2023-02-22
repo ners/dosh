@@ -28,7 +28,7 @@ type PrintableToken = Token Printable
 type PrintableLine = SourceLine Printable
 
 instance Pretty Printable where
-    prettify _ = fmap onSpace . Text.split (== '\n')
+    plain = fmap onSpace . Text.split (== '\n')
       where
         onSpace "" = []
         onSpace t = case Text.break isSpace t of
@@ -38,12 +38,13 @@ instance Pretty Printable where
         onGraph t = case Text.break (not . isSpace) t of
             ("", rt) -> onSpace rt
             (t', rt) -> (Whitespace, t') : onSpace rt
+    pretty _ = Just . plain
 
 instance Arbitrary Text where
     arbitrary = Text.pack <$> listOf (elements $ ['a' .. 'z'] <> ['A' .. 'Z'] <> [' ', '\t', '\n'])
 
 instance Arbitrary (CodeZipper Printable) where
-    arbitrary = fromText "" <$> arbitrary
+    arbitrary = plainZipper <$> arbitrary
 
 data Move = Up | Down | Left | Right | Home | End | Top | Bottom
     deriving (Bounded, Enum, Eq, Show)
@@ -73,7 +74,7 @@ instance Arbitrary Move where arbitrary = elements [minBound .. maxBound]
 type MoveSequence = [Move]
 
 isomorphicText :: CodeZipper Printable -> Expectation
-isomorphicText cz = fromText "" (toText cz) `isEquivalentTo` cz
+isomorphicText cz = plainZipper (toText cz) `isEquivalentTo` cz
 
 goHome :: CodeZipper Printable -> Expectation
 goHome cz = do

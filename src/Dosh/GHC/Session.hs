@@ -12,11 +12,6 @@ import GHC qualified
 import GHC.Driver.Session qualified as GHC
 import GHC.Generics (Generic)
 import GHC.Platform.Ways qualified as GHC
-#if __GLASGOW_HASKELL__ >= 941
-import GHC.Data.Bool qualified as GHC
-#else
-import GHC.Utils.Misc qualified as GHC
-#endif
 
 deriving instance Generic GHC.DynFlags
 
@@ -41,7 +36,6 @@ initialiseSession = do
             GHC.setSessionDynFlags $
                 flags
                     & #backend .~ GHC.Interpreter
-                    & #useColor .~ GHC.Always
                     & disableGeneral GHC.Opt_GhciSandbox
                     & filtered (const GHC.hostIsDynamic) %~ addWay' GHC.WayDyn
     prelude <- GHC.parseImportDecl "import Dosh.Prelude"

@@ -13,7 +13,7 @@ jobs:
   build:
     strategy:
       matrix:
-        target: ['default']
+        target: ['default', 'ghc94.dosh']
         os: ['ubuntu-latest', 'macos-latest']
     runs-on: ${{ matrix.os }}
     name: Build ${{ matrix.target }} on ${{ matrix.os }}
