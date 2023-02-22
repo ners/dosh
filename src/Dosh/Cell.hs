@@ -5,13 +5,14 @@ module Dosh.Cell where
 import Control.Monad
 import Control.Monad.Fix
 import Control.Monad.IO.Class
+import Data.ByteString (ByteString)
 import Data.Default (Default)
 import Data.Functor ((<&>))
 import Data.Generics.Labels ()
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Data.Text.CodeZipper (CodeZipper)
 import Data.Text.CodeZipper qualified as CZ
+import Data.Text.Encoding qualified as Text
 import Data.UUID (UUID)
 import Data.UUID qualified as UUID
 import Data.UUID.V4 qualified as UUID
@@ -23,12 +24,14 @@ import Reflex.Vty
 import Reflex.Vty.Widget.Input.Code
 import Skylighting (TokenType)
 
+type CodeZipper = CZ.CodeZipper TokenType
+
 data Cell = Cell
     { uid :: UUID
     , number :: Int
-    , input :: CodeZipper TokenType
-    , output :: Maybe Text
-    , error :: Maybe Text
+    , input :: CodeZipper
+    , output :: Maybe ByteString
+    , error :: Maybe ByteString
     , disabled :: Bool
     , evaluated :: Bool
     }
@@ -52,8 +55,8 @@ instance Default Cell where
             }
 
 data CellEvent
-    = UpdateCellInput (CodeZipper TokenType -> CodeZipper TokenType)
-    | EvaluateCell (CodeZipper TokenType)
+    = UpdateCellInput (CodeZipper -> CodeZipper)
+    | EvaluateCell Text
     | GoToPreviousCell
     | GoToNextCell
 
@@ -81,13 +84,13 @@ cell c = do
     let inPrompt = mconcat [if c.evaluated then "*" else " ", "In[", tshow c.number, "]: "]
     let outPrompt = "Out[" <> tshow c.number <> "]: "
     let errPrompt = "Err[" <> tshow c.number <> "]: "
-    unless c.disabled $ do
+    unless c.disabled $ void $ do
         vtyInput :: Event t VtyEvent <- Reflex.Vty.input
         dh :: Dynamic t Int <- displayHeight
         let updateZipper = triggerCellEvent . UpdateCellInput
-        void $
-            performEvent $
-                current dh `attach` vtyInput <&> \(dh, ev) -> liftIO $ case ev of
+        performEvent $
+            current dh `attach` vtyInput <&> \(dh, ev) ->
+                liftIO $ case ev of
                     -- Delete character in zipper
                     V.EvKey V.KBS [] -> updateZipper CZ.deleteLeft
                     V.EvKey V.KDel [] -> updateZipper CZ.deleteRight
@@ -107,30 +110,39 @@ cell c = do
                     V.EvKey V.KPageUp [] -> updateZipper $ CZ.upN dh
                     V.EvKey V.KPageDown [] -> updateZipper $ CZ.downN dh
                     -- Insert characters into zipper
-                    V.EvKey V.KEnter [] -> triggerCellEvent $ EvaluateCell c.input
-                    V.EvKey V.KEnter [V.MMeta] -> updateZipper $ CZ.insertChar '\n'
-                    V.EvKey (V.KChar '\t') [] -> updateZipper $ CZ.insert $ Text.replicate (1 + ((CZ.col c.input + 1) `mod` 4)) " "
+                    V.EvKey (V.KChar '\t') [] -> do
+                        -- move to the next multiple of 4
+                        let x = CZ.col c.input
+                            dx = 4 - mod x 4
+                        updateZipper $ CZ.insert $ Text.replicate dx " "
                     V.EvKey (V.KChar k) [] -> updateZipper $ CZ.insertChar k
+                    V.EvKey V.KEnter [V.MMeta] -> updateZipper $ CZ.insertChar '\n'
+                    -- Evaluate the cell if it has any input
+                    V.EvKey V.KEnter [] ->
+                        unless (CZ.null $ c.input) $
+                            triggerCellEvent $
+                                EvaluateCell $
+                                    CZ.toText c.input
                     _ -> pure ()
-    void $ grout (fixed $ pure $ CZ.lines c.input) $ row $ do
+    grout (fixed $ pure $ CZ.lines c.input) $ row $ do
         grout (fixed $ pure $ Text.length inPrompt) $ text $ pure inPrompt
-        void $
-            grout flex $
-                codeInput
-                    def
-                        { _codeInputConfig_value = Just $ pure c.input
-                        , _codeInputConfig_showCursor = not c.disabled
-                        }
-    forM_ c.output $ \out ->
-        grout (fixed $ pure $ 1 + Text.count "\n" out) $
-            row $ do
-                grout (fixed $ pure $ Text.length outPrompt) $ text $ pure outPrompt
-                grout flex $ text $ pure out
-    forM_ c.error $ \err ->
-        grout (fixed $ pure $ 1 + Text.count "\n" err) $
-            row $ do
-                grout (fixed $ pure $ Text.length errPrompt) $ text $ pure errPrompt
-                grout flex $ redText $ pure err
+        grout flex $
+            codeInput
+                def
+                    { _codeInputConfig_value = Just $ pure c.input
+                    , _codeInputConfig_showCursor = not c.disabled
+                    }
+    forM_ c.output $ \(Text.decodeUtf8 -> out) -> do
+        blankLine
+        grout (fixed $ pure $ length $ Text.lines out) $ row $ do
+            grout (fixed $ pure $ Text.length outPrompt) $ text $ pure outPrompt
+            grout flex $ text $ pure out
+    forM_ c.error $ \(Text.decodeUtf8 -> err) -> do
+        blankLine
+        grout (fixed $ pure $ length $ Text.lines err) $ row $ do
+            grout (fixed $ pure $ Text.length errPrompt) $ text $ pure errPrompt
+            grout flex $ redText $ pure err
+    blankLine
     -- grout (fixed $ pure 1) $ row $ text $ current $ tshow <$> codeZipper
     pure cellEvent
 

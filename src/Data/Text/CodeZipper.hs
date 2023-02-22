@@ -1,4 +1,5 @@
 {-# LANGUAGE ViewPatterns #-}
+{-# OPTIONS_GHC -Wno-name-shadowing #-}
 
 module Data.Text.CodeZipper where
 
@@ -49,6 +50,10 @@ prettyZipper language t = pretty language t <&> \(fromMaybe ([], []) . uncons ->
 currentLine :: Eq t => CodeZipper t -> SourceLine t
 currentLine CodeZipper{tokensBefore, tokensAfter} =
     normaliseToks $ reverse tokensBefore <> tokensAfter
+
+null :: CodeZipper t -> Bool
+null CodeZipper{..} = null linesBefore && null linesAfter && null tokensBefore && null tokensAfter
+    where null = Prelude.null
 
 lines :: CodeZipper t -> Int
 lines CodeZipper{linesBefore, linesAfter} = length linesBefore + 1 + length linesAfter

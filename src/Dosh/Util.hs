@@ -5,11 +5,13 @@ import Control.Concurrent.Async.Lifted (race_)
 import Control.Lens
 import Control.Monad.Base (liftBase)
 import Control.Monad.Trans.Control (MonadBaseControl)
+import Data.ByteString (ByteString)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.String (IsString, fromString)
 import Data.Text (Text)
 import Data.Text qualified as Text
+import Data.Text.Encoding qualified as Text
 import Data.Text.IO qualified as Text
 import Graphics.Vty (Key (..), Modifier (..))
 import Reflex
@@ -33,6 +35,9 @@ tread = read . Text.unpack
 
 tshow :: Show a => a -> Text
 tshow = Text.pack . show
+
+bshow :: Show a => a -> ByteString
+bshow = Text.encodeUtf8 . tshow
 
 fromText :: IsString s => Text -> s
 fromText = fromString . Text.unpack
@@ -88,3 +93,6 @@ attach2 (b1, b2) e = attach b1 (attach b2 e) <&> \(a, (b, c)) -> (a, b, c)
 
 attach3 :: Reflex t => (Behavior t a, Behavior t b, Behavior t c) -> Event t d -> Event t (a, b, c, d)
 attach3 (b1, b2, b3) e = attach b1 (attach2 (b2, b3) e) <&> \(a, (b, c, d)) -> (a, b, c, d)
+
+blankLine :: forall t m. (Reflex t, Monad m, HasLayout t m, HasInput t m, HasImageWriter t m, HasDisplayRegion t m, HasFocusReader t m) => m ()
+blankLine = grout (fixed $ pure 1) blank

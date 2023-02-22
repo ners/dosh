@@ -29,6 +29,7 @@ common common
         RecordWildCards
         RecursiveDo
         TypeFamilies
+        ViewPatterns
     build-depends:
         base,
         bytestring,

@@ -13,6 +13,7 @@ import Control.Monad.Catch (SomeException, catch)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader (ReaderT (..))
 import Control.Monad.Trans.Control (MonadBaseControl (..))
+import Data.ByteString (ByteString, hGetSome)
 import Data.Char (isSpace)
 import Data.Functor (void)
 import Data.Generics.Labels ()
@@ -22,7 +23,6 @@ import Data.Maybe (listToMaybe)
 import Data.String (IsString (..))
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Data.Text.IO qualified as Text
 import Data.UUID (UUID)
 import Dosh.GHC.Server (Server (..))
 import Dosh.Util
@@ -30,6 +30,7 @@ import GHC qualified
 import GHC.Driver.Monad (Ghc (..), Session (..))
 import GHC.Generics (Generic)
 import Reflex hiding (Query, Response)
+import Data.ByteString.Builder.Extra (defaultChunkSize)
 
 data Query = Query
     { uid :: UUID
@@ -37,8 +38,8 @@ data Query = Query
     }
 
 data Response
-    = FullResponse {uid :: UUID, content :: Text}
-    | PartialResponse {uid :: UUID, content :: Text}
+    = FullResponse {uid :: UUID, content :: ByteString}
+    | PartialResponse {uid :: UUID, content :: ByteString}
     | Error {uid :: UUID, error :: SomeException}
     | EndResponse {uid :: UUID}
 
@@ -71,7 +72,7 @@ client ghc = do
                         Statement s -> void $ GHC.execStmt s GHC.execOptions
                     GHC.execStmt "mapM_ hFlush [stdout, stderr]" GHC.execOptions
             let log = forever $ liftIO $ do
-                    content <- Text.hGetLine ghc.output <&> (<> "\n")
+                    content <- hGetSome ghc.output defaultChunkSize
                     respond PartialResponse{..}
             raceWithDelay_ 1000 exec log `catch` \error -> liftIO (respond Error{..})
             liftIO $ respond EndResponse{..}

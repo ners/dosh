@@ -12,7 +12,6 @@ import Data.List.NonEmpty qualified as NonEmpty
 import Data.Maybe (fromJust, fromMaybe)
 import Data.Sequence.Zipper (SeqZipper)
 import Data.Sequence.Zipper qualified as SZ
-import Data.Text.CodeZipper qualified as CZ
 import Data.Traversable (for)
 import Data.UUID (UUID)
 import Data.UUID.V4 qualified as UUID
@@ -110,7 +109,7 @@ handleCellEvent
     -> m (Notebook -> Notebook)
 handleCellEvent _ uid (UpdateCellInput update) = pure $ #cells . ix uid . #input %~ update
 handleCellEvent ghc uid (EvaluateCell content) = do
-    liftIO $ ghc.query GHC.Query{uid, content = CZ.toText content}
+    liftIO $ ghc.query GHC.Query{uid, content}
     newCellUid <- liftIO UUID.nextRandom
     pure $
         updateNumbers
@@ -156,5 +155,5 @@ handleGhcResponse :: GHC.Response -> (UUID, Cell -> Cell)
 handleGhcResponse r = (r.uid,) $ case r of
     GHC.FullResponse{content} -> #output ?~ content
     GHC.PartialResponse{content} -> #output %~ (Just . (<> content) . fromMaybe "")
-    GHC.Error{error} -> #error ?~ tshow error
+    GHC.Error{error} -> #error ?~ bshow error
     GHC.EndResponse{} -> #disabled .~ False
