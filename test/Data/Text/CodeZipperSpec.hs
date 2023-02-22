@@ -2,11 +2,8 @@
 
 module Data.Text.CodeZipperSpec where
 
-import Control.Concurrent (threadDelay)
-import Control.Concurrent.Async.Lifted (race)
 import Control.Exception (AssertionFailed (..), throw)
 import Control.Monad (foldM_)
-import Control.Monad.IO.Class (liftIO)
 import Data.Char (isSpace)
 import Data.Either.Extra (fromEither)
 import Data.Foldable (foldrM)
@@ -18,6 +15,10 @@ import Data.Text qualified as Text
 import Data.Text.CodeZipper
 import Test.Hspec
 import Test.QuickCheck
+import Test.QuickCheck.Utf8
+import UnliftIO (MonadUnliftIO)
+import UnliftIO.Async (race)
+import UnliftIO.Concurrent (threadDelay)
 import Prelude hiding (Left, Right)
 
 data Printable = Graphic | Whitespace
@@ -41,23 +42,13 @@ instance Pretty Printable where
     pretty _ = Just . plain
 
 instance Arbitrary Text where
-    arbitrary = Text.pack <$> listOf (elements $ ['a' .. 'z'] <> ['A' .. 'Z'] <> [' ', '\t', '\n'])
+    arbitrary = genValidUtf8
 
 instance Arbitrary (CodeZipper Printable) where
     arbitrary = plainZipper <$> arbitrary
 
 data Move = Up | Down | Left | Right | Home | End | Top | Bottom
     deriving (Bounded, Enum, Eq, Show)
-
-within' :: Int -> IO a -> IO a
-within' ms e = do
-    winner <- race e $ do
-        liftIO $ threadDelay ms
-        throw $ AssertionFailed "Timeout exceeded"
-    pure $ fromEither winner
-
-tryMove :: (Eq t, Show t) => Move -> CodeZipper t -> IO (CodeZipper t)
-tryMove m cz = within' 100 $ pure $ move m cz
 
 move :: (Eq t, Show t) => Move -> CodeZipper t -> CodeZipper t
 move Up = up
@@ -68,6 +59,19 @@ move Home = home
 move End = end
 move Top = top
 move Bottom = bottom
+
+tryMove :: (Eq t, Show t, MonadUnliftIO m) => Move -> CodeZipper t -> m (CodeZipper t)
+tryMove m cz = within' 100 $ pure $ move m cz
+
+tryMoves :: (Eq t, Show t, MonadUnliftIO m) => MoveSequence -> CodeZipper t -> m (CodeZipper t)
+tryMoves moves cz = within' 100 $ pure $ foldl (flip move) cz moves
+
+within' :: MonadUnliftIO m => Int -> m a -> m a
+within' ms e = do
+    winner <- race e $ do
+        threadDelay ms
+        throw $ AssertionFailed "Timeout exceeded"
+    pure $ fromEither winner
 
 instance Arbitrary Move where arbitrary = elements [minBound .. maxBound]
 
@@ -119,12 +123,12 @@ goMove = foldM_ go . (0,0,)
 
 unchangedByMovement :: CodeZipper Printable -> MoveSequence -> Expectation
 unchangedByMovement cz s = do
-    moved :: CodeZipper Printable <- liftIO $ foldrM tryMove cz s
+    moved :: CodeZipper Printable <- foldrM tryMove cz s
     moved `isEquivalentTo` cz
 
 insertText :: CodeZipper Printable -> MoveSequence -> Text -> Expectation
 insertText cz s t = do
-    moved :: CodeZipper Printable <- liftIO $ foldrM tryMove cz s
+    moved :: CodeZipper Printable <- foldrM tryMove cz s
     inserted :: CodeZipper Printable <- within' 100 $ pure $ insert t moved
     toText inserted `shouldContainText` t
     textBefore inserted `shouldBe` (textBefore moved <> t)

@@ -35,6 +35,7 @@ library
         data-default,
         generic-lens,
         lens,
+        sixel,
         text
     exposed-modules:
         Dosh.Prelude

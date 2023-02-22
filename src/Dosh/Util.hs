@@ -6,8 +6,10 @@ import Control.Lens
 import Control.Monad.Base (liftBase)
 import Control.Monad.Trans.Control (MonadBaseControl)
 import Data.ByteString (ByteString)
+import Data.Char (isUpper)
 import Data.Map (Map)
 import Data.Map qualified as Map
+import Data.Maybe (listToMaybe)
 import Data.String (IsString, fromString)
 import Data.Text (Text)
 import Data.Text qualified as Text
@@ -96,3 +98,10 @@ attach3 (b1, b2, b3) e = attach b1 (attach2 (b2, b3) e) <&> \(a, (b, c, d)) -> (
 
 blankLine :: forall t m. (Reflex t, Monad m, HasLayout t m, HasInput t m, HasImageWriter t m, HasDisplayRegion t m, HasFocusReader t m) => m ()
 blankLine = grout (fixed $ pure 1) blank
+
+toMaybe :: Bool -> a -> Maybe a
+toMaybe False = const Nothing
+toMaybe True = Just
+
+startsWithUpper :: String -> Bool
+startsWithUpper = maybe True isUpper . listToMaybe

@@ -132,19 +132,19 @@ cell c = do
                     { _codeInputConfig_value = Just $ pure c.input
                     , _codeInputConfig_showCursor = not c.disabled
                     }
-    forM_ c.output $ \(Text.decodeUtf8 -> out) -> do
+    forM_ c.output $ \out -> do
         blankLine
-        grout (fixed $ pure $ length $ Text.lines out) $ row $ do
+        grout flex $ row $ do
             grout (fixed $ pure $ Text.length outPrompt) $ text $ pure outPrompt
-            grout flex $ text $ pure out
+            grout flex $ display $ pure out
     forM_ c.error $ \(Text.decodeUtf8 -> err) -> do
         blankLine
         grout (fixed $ pure $ length $ Text.lines err) $ row $ do
             grout (fixed $ pure $ Text.length errPrompt) $ text $ pure errPrompt
-            grout flex $ redText $ pure err
+            grout flex $ colorText V.red $ pure err
     blankLine
     -- grout (fixed $ pure 1) $ row $ text $ current $ tshow <$> codeZipper
     pure cellEvent
 
-redText :: forall t m. (Reflex t, Monad m, HasDisplayRegion t m, HasImageWriter t m, HasTheme t m) => Behavior t Text -> m ()
-redText = richText RichTextConfig{_richTextConfig_attributes = pure $ V.withForeColor V.currentAttr V.red}
+colorText :: forall t m. (Reflex t, Monad m, HasDisplayRegion t m, HasImageWriter t m, HasTheme t m) => V.Color -> Behavior t Text -> m ()
+colorText c = richText RichTextConfig{_richTextConfig_attributes = pure $ V.withForeColor V.currentAttr c}

@@ -40,6 +40,7 @@ common common
         lifted-async,
         reflex,
         reflex-vty,
+        template-haskell,
         text
 
 library
@@ -60,7 +61,6 @@ library
         Reflex.Vty.Widget.Input.Code
     build-depends:
         containers,
-        unordered-containers,
         deepseq,
         exceptions,
         extra,
@@ -81,6 +81,7 @@ library
         skylighting,
         skylighting-core,
         transformers-base,
+        unordered-containers,
         uuid,
         vty
 
@@ -111,6 +112,8 @@ test-suite dosh-test
         dosh,
         extra,
         hspec,
+        quickcheck-text,
+        unliftio,
         vty
     other-modules:
         Data.Text.CodeZipperSpec,

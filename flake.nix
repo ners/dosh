@@ -106,6 +106,7 @@
                 haskell-language-server
                 pkgs.nixpkgs-fmt
                 pkgs.cachix
+                pkgs.texlive.combined.scheme-full
               ];
             };
             formatter = pkgs.nixpkgs-fmt;

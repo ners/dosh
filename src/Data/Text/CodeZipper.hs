@@ -53,7 +53,8 @@ currentLine CodeZipper{tokensBefore, tokensAfter} =
 
 null :: CodeZipper t -> Bool
 null CodeZipper{..} = null linesBefore && null linesAfter && null tokensBefore && null tokensAfter
-    where null = Prelude.null
+  where
+    null = Prelude.null
 
 lines :: CodeZipper t -> Int
 lines CodeZipper{linesBefore, linesAfter} = length linesBefore + 1 + length linesAfter
