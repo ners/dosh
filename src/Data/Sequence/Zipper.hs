@@ -14,14 +14,17 @@ data SeqZipper t = SeqZipper
     }
     deriving stock (Generic, Eq, Show)
 
+empty :: SeqZipper t
+empty = SeqZipper{before = Seq.empty, after = Seq.empty}
+
+singleton :: t -> SeqZipper t
+singleton x = SeqZipper{before = mempty, after = Seq.singleton x}
+
 instance Semigroup (SeqZipper t) where
     a <> b = SeqZipper{before = before a, after = after a <> before b <> after b}
 
 instance Monoid (SeqZipper t) where
-    mempty = SeqZipper{before = mempty, after = mempty}
-
-singleton :: t -> SeqZipper t
-singleton x = SeqZipper{before = mempty, after = Seq.singleton x}
+    mempty = empty
 
 instance IsList (SeqZipper t) where
     type Item (SeqZipper t) = t
@@ -76,7 +79,7 @@ back sz@SeqZipper{..} = case Seq.viewr before of
     (before :> x) -> sz{before, after = x <| after}
 
 home :: SeqZipper t -> SeqZipper t
-home sz@SeqZipper{..} = sz{before = before <> after, after = mempty}
+home sz@SeqZipper{..} = sz{before = mempty, after = before <> after}
 
 end :: SeqZipper t -> SeqZipper t
-end sz@SeqZipper{..} = sz{before = mempty, after = before <> after}
+end sz@SeqZipper{..} = sz{before = before <> after, after = mempty}

@@ -11,14 +11,22 @@ import Data.List.NonEmpty qualified as NonEmpty
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as Text
+import GHC.Generics (Generic)
 
-type Token t = (t, Text)
+data Token t = Token
+    { tokenType :: t
+    , tokenContent :: Text
+    }
+    deriving (Generic, Eq, Show)
 
 type SourceLine t = [Token t]
 
 class Pretty t where
     plain :: Text -> [SourceLine t]
     pretty :: Text -> Text -> Maybe [SourceLine t]
+
+plainLine :: Pretty t => Text -> SourceLine t
+plainLine = maybe [] fst . uncons . plain
 
 data CodeZipper t = CodeZipper
     { language :: Text
@@ -85,11 +93,8 @@ textAfter CodeZipper{linesAfter, tokensAfter} =
 toText :: Eq t => CodeZipper t -> Text
 toText cz = textBefore cz <> textAfter cz
 
-tokenToText :: Token t -> Text
-tokenToText = snd
-
 lineToText :: SourceLine t -> Text
-lineToText line = mconcat $ tokenToText <$> line
+lineToText line = mconcat $ tokenContent <$> line
 
 insert :: (Eq t, Pretty t) => Text -> CodeZipper t -> CodeZipper t
 insert t cz@CodeZipper{..} =
@@ -231,7 +236,7 @@ down' cz@CodeZipper{linesAfter = []} = cz
 down' cz@CodeZipper{linesAfter = la : las, linesBefore} =
     cz
         { linesAfter = las
-        , linesBefore = normaliseToks (currentLine cz) : linesBefore
+        , linesBefore = currentLine cz : linesBefore
         , tokensBefore = []
         , tokensAfter = la
         }
@@ -253,17 +258,29 @@ top cz@CodeZipper{linesBefore} = length linesBefore `upN` cz
 bottom :: Eq t => CodeZipper t -> CodeZipper t
 bottom cz@CodeZipper{linesAfter} = length linesAfter `downN` cz
 
+mapTokenContent :: (Text -> Text) -> Token t -> Token t
+mapTokenContent f t = t{tokenContent = f t.tokenContent}
+
 tokenWidth :: Token t -> Int
-tokenWidth = Text.length . snd
+tokenWidth = Text.length . tokenContent
+
+nullToken :: Token t -> Bool
+nullToken = Text.null . tokenContent
+
+append :: Text -> Token t -> Token t
+append t = mapTokenContent (<> t)
+
+prepend :: Text -> Token t -> Token t
+prepend t = mapTokenContent (t <>)
 
 lineWidth :: SourceLine t -> Int
 lineWidth = sum . fmap tokenWidth
 
 splitTokenAt :: Int -> Token t -> (Token t, Token t)
 splitTokenAt i t | i < 0 = splitTokenAt 0 t
-splitTokenAt i (tokenType, tokenText) = ((tokenType, a), (tokenType, b))
+splitTokenAt i t = (t{tokenContent = a}, t{tokenContent = b})
   where
-    (a, b) = Text.splitAt i tokenText
+    (a, b) = Text.splitAt i t.tokenContent
 
 splitTokenAt' :: Int -> Token t -> (Token t, Token t, Token t)
 splitTokenAt' i t = (a, b, c')
@@ -272,10 +289,11 @@ splitTokenAt' i t = (a, b, c')
     (b, c') = splitTokenAt 1 c
 
 normaliseToks :: Eq t => [Token t] -> [Token t]
-normaliseToks = foldr prepend []
+normaliseToks = foldr maybePrepend []
   where
-    prepend (_, t) acc | Text.null t = acc
-    prepend t [] = [t]
-    prepend t@(ttype, ttext) ps@((ptype, ptext) : pps)
-        | ttype == ptype = (ptype, ttext <> ptext) : pps
-        | otherwise = t : ps
+    maybePrepend (nullToken -> True) acc = acc
+    maybePrepend t (p : ps) | t.tokenType == p.tokenType = prepend t.tokenContent p : ps
+    maybePrepend t ps = t : ps
+
+tokenLines :: Token t -> [Token t]
+tokenLines t = Text.splitOn "\n" t.tokenContent <&> \c -> t{tokenContent = c}

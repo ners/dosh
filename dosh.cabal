@@ -108,13 +108,14 @@ test-suite dosh-test
     main-is:          Spec.hs
     hs-source-dirs:   test
     build-depends:
+        async,
         QuickCheck,
         dosh,
         extra,
         hspec,
         quickcheck-text,
-        unliftio,
         vty
     other-modules:
+        Data.Sequence.ZipperSpec,
         Data.Text.CodeZipperSpec,
     build-tools-depends: hspec-discover:hspec-discover

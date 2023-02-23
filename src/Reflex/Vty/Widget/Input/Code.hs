@@ -6,7 +6,7 @@
 
 module Reflex.Vty.Widget.Input.Code where
 
-import Control.Arrow (first, (>>>))
+import Control.Arrow ((>>>))
 import Control.Lens
 import Control.Monad.Fix (MonadFix)
 import Data.Default (Default)
@@ -18,7 +18,7 @@ import Data.List.Extra qualified
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Data.Text.CodeZipper (CodeZipper)
+import Data.Text.CodeZipper (CodeZipper (..), Pretty (..), normaliseToks, tokenLines)
 import Data.Text.CodeZipper qualified as CZ
 import Data.Text.Zipper (DisplayLines (..), Span (..), TextAlignment (..))
 import Data.Word (Word8)
@@ -29,48 +29,53 @@ import Reflex hiding (tag)
 import Reflex.Vty.Widget
 import Reflex.Vty.Widget.Input.Mouse
 import Reflex.Vty.Widget.Input.Text
-import Skylighting (TokenizerConfig (..), defaultSyntaxMap, lookupSyntax, tokenize)
-import Skylighting.Types (Token, TokenType (..))
+import Skylighting qualified as S
+import Skylighting.Types (TokenType (..))
 
 deriving instance Generic tag => Generic (Span tag)
 
+type Token = CZ.Token TokenType
+
 type SourceLine = CZ.SourceLine TokenType
 
-instance CZ.Pretty TokenType where
-    plain code = [[(NormalTok, line)] | line <- Text.splitOn "\n" code]
+instance Pretty TokenType where
+    plain code = [[CZ.Token{tokenType = NormalTok, ..}] | tokenContent <- Text.splitOn "\n" code]
     pretty "Haskell" = ghcHighlight
     pretty lang = skylight lang
 
+plainToken :: Text -> Token
+plainToken tokenContent = CZ.Token{tokenType = NormalTok, ..}
+
 skylight :: Text -> Text -> Maybe [SourceLine]
 skylight lang code = eitherToMaybe $ do
-    syntax <- maybeToEither @String "Syntax not found" $ lookupSyntax lang defaultSyntaxMap
-    let cfg = TokenizerConfig{syntaxMap = defaultSyntaxMap, traceOutput = False}
-    case tokenize cfg syntax (code <> "\n") of
+    syntax <- maybeToEither @String "Syntax not found" $ S.lookupSyntax lang S.defaultSyntaxMap
+    let cfg = S.TokenizerConfig{syntaxMap = S.defaultSyntaxMap, traceOutput = False}
+    case S.tokenize cfg syntax (code <> "\n") of
         Left _ -> Left "Tokenize failed"
         Right [] -> Left "No tokens produced"
-        Right x -> Right x
+        Right lines -> Right $ (fmap . fmap) (\(tokenType, tokenContent) -> CZ.Token{..}) lines
 
 ghcHighlight :: Text -> Maybe [SourceLine]
-ghcHighlight code = fmap CZ.normaliseToks . gsTokensToLines <$> GS.tokenizeHaskell code
+ghcHighlight code = fmap normaliseToks . gsTokensToLines <$> GS.tokenizeHaskell code
   where
     gsTokensToLines :: [(GS.Token, Text)] -> [SourceLine]
-    gsTokensToLines = Data.List.Extra.split (\(_, tokenText) -> tokenText == "\n") . concatMap splitTokenLines . fmap (first gs2tok)
-    splitTokenLines :: Token -> [Token]
-    splitTokenLines (tokenType, tokenText) = (tokenType,) <$> (intersperse "\n" . Text.splitOn "\n") tokenText
-    gs2tok :: GS.Token -> TokenType
-    gs2tok GS.CharTok = CharTok
-    gs2tok GS.CommentTok = CommentTok
-    gs2tok GS.ConstructorTok = FunctionTok
-    gs2tok GS.IntegerTok = ConstantTok
-    gs2tok GS.KeywordTok = KeywordTok
-    gs2tok GS.OperatorTok = OperatorTok
-    gs2tok GS.OtherTok = OtherTok
-    gs2tok GS.PragmaTok = PreprocessorTok
-    gs2tok GS.RationalTok = FloatTok
-    gs2tok GS.SpaceTok = NormalTok
-    gs2tok GS.StringTok = StringTok
-    gs2tok GS.SymbolTok = OperatorTok
-    gs2tok GS.VariableTok = VariableTok
+    gsTokensToLines = Data.List.Extra.split (("\n" ==) . CZ.tokenContent) . concatMap (intersperse (plainToken "\n") . tokenLines . mapToken)
+    mapToken :: (GS.Token, Text) -> Token
+    mapToken (mapTokenType -> tokenType, tokenContent) = CZ.Token{..}
+    mapTokenType :: GS.Token -> TokenType
+    mapTokenType GS.CharTok = CharTok
+    mapTokenType GS.CommentTok = CommentTok
+    mapTokenType GS.ConstructorTok = FunctionTok
+    mapTokenType GS.IntegerTok = ConstantTok
+    mapTokenType GS.KeywordTok = KeywordTok
+    mapTokenType GS.OperatorTok = OperatorTok
+    mapTokenType GS.OtherTok = OtherTok
+    mapTokenType GS.PragmaTok = PreprocessorTok
+    mapTokenType GS.RationalTok = FloatTok
+    mapTokenType GS.SpaceTok = NormalTok
+    mapTokenType GS.StringTok = StringTok
+    mapTokenType GS.SymbolTok = OperatorTok
+    mapTokenType GS.VariableTok = VariableTok
 
 data CodeInputConfig t = CodeInputConfig
     { _codeInputConfig_initialValue :: CodeZipper TokenType
@@ -191,10 +196,10 @@ displayCodeLinesWithAlignment alignment width tag cursorTag z =
   where
     cursorRow = length z.linesBefore
     cursorCol = CZ.lineWidth z.tokensBefore
-    tokenToSpan (tokenType, code) = highlightSpan tokenType $ Span tag code
+    tokenToSpan CZ.Token{..} = highlightSpan tokenType $ Span tag tokenContent
     cursorTokenToSpan = tokenToSpan >>> position @1 %~ cursorTag
-    lineToSpans line = tokenToSpan <$> ((NormalTok, "") : line)
-    (cursorToken, tokensAfter) = fromMaybe ((NormalTok, " "), []) $ do
+    lineToSpans line = tokenToSpan <$> (plainToken "" : line)
+    (cursorToken, tokensAfter) = fromMaybe (plainToken " ", []) $ do
         (ta, tas) <- uncons z.tokensAfter
         let (ct, ta') = CZ.splitTokenAt 1 ta
         pure (ct, ta' : tas)
@@ -206,7 +211,9 @@ displayCodeLinesWithAlignment alignment width tag cursorTag z =
             ]
 
 nonEmptyToken :: Token -> Token
-nonEmptyToken (tokenType, tokenText) = (tokenType,) $ if Text.null tokenText then " " else tokenText
+nonEmptyToken t
+    | Text.null t.tokenContent = t{CZ.tokenContent = " "}
+    | otherwise = t
 
 highlightSpan :: TokenType -> Span V.Attr -> Span V.Attr
 highlightSpan = (position @1 %~) . tokenAttr @DefaultDark
