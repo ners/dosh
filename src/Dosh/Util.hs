@@ -1,24 +1,17 @@
 module Dosh.Util where
 
-import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async.Lifted (race_)
-import Control.Lens
 import Control.Monad.Base (liftBase)
 import Control.Monad.Trans.Control (MonadBaseControl)
-import Data.ByteString (ByteString)
-import Data.Char (isUpper)
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (listToMaybe)
-import Data.String (IsString, fromString)
-import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
 import Data.Text.IO qualified as Text
+import Dosh.Prelude
 import Graphics.Vty (Key (..), Modifier (..))
 import Reflex
 import Reflex.Vty
-import System.IO (Handle, hReady)
 
 (<$$>) :: (Functor f, Functor g) => (a -> b) -> f (g a) -> f (g b)
 (<$$>) = fmap . fmap
@@ -103,5 +96,14 @@ toMaybe :: Bool -> a -> Maybe a
 toMaybe False = const Nothing
 toMaybe True = Just
 
-startsWithUpper :: String -> Bool
-startsWithUpper = maybe True isUpper . listToMaybe
+maybeStartsWith :: Bool -> (Char -> Bool) -> Text -> Bool
+maybeStartsWith d f = maybe d (f . fst) . Text.uncons
+
+maybeEndsWith :: Bool -> (Char -> Bool) -> Text -> Bool
+maybeEndsWith d _ "" = d
+maybeEndsWith _ f t = f $ Text.last t
+
+newlined :: Text -> Text
+newlined t
+    | maybeEndsWith False (== '\n') t = t
+    | otherwise = t <> "\n"

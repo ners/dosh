@@ -51,6 +51,7 @@ library
         Data.Sequence.Zipper,
         Dosh.Cell,
         Dosh.GHC.Client,
+        Dosh.GHC.Parser,
         Dosh.GHC.Server,
         Dosh.GHC.Session,
         Dosh.LSP.Client,
@@ -113,9 +114,12 @@ test-suite dosh-test
         dosh,
         extra,
         hspec,
+        hspec-expectations,
         quickcheck-text,
         vty
     other-modules:
+        Dosh.GHC.ParserSpec,
         Data.Sequence.ZipperSpec,
         Data.Text.CodeZipperSpec,
+        Test.Hspec.Expectations.Extra,
     build-tools-depends: hspec-discover:hspec-discover

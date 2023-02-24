@@ -2,13 +2,11 @@
 
 module Dosh.GHC.Session where
 
-import Control.Arrow ((>>>))
-import Control.Lens
-import Control.Monad ((>=>))
 import Control.Monad.IO.Class (liftIO)
 import Data.Generics.Labels ()
-import Data.List (stripPrefix)
+import Data.Text (stripPrefix, unpack)
 import Development.IDE.GHC.Compat qualified as GHC
+import Dosh.Prelude
 import Dosh.Util
 import GHC (GhcMonad)
 import GHC qualified
@@ -51,13 +49,15 @@ initialiseSession = do
         #backend .~ GHC.Interpreter
             >>> setGeneral GHC.Opt_GhciSandbox
             >>> filtered (const GHC.hostIsDynamic) %~ setWay GHC.WayDyn
+            >>> unsetExtension GHC.MonomorphismRestriction
+            >>> setExtension GHC.IncoherentInstances
     addImport "Dosh.Prelude"
 
 deriving instance Generic (GHC.ImportDecl GHC.GhcPs)
 
-addImport :: GhcMonad m => String -> m ()
+addImport :: GhcMonad m => Text -> m ()
 addImport lib = do
-    parsed <- GHC.parseImportDecl $ "import " <> lib
+    parsed <- GHC.parseImportDecl $ "import " <> unpack lib
     context <- GHC.getContext
     GHC.setContext $ GHC.IIDecl parsed : context
 
@@ -69,6 +69,6 @@ enableExtension ext = overDynFlags $ setExtension ext
 disableExtension :: GhcMonad m => Extension -> m ()
 disableExtension ext = overDynFlags $ unsetExtension ext
 
-applyExtensionString :: GhcMonad m => String -> m ()
-applyExtensionString (stripPrefix "No" >=> toMaybe =<< startsWithUpper -> Just ext) = overDynFlags $ unsetExtension $ read ext
-applyExtensionString ext = overDynFlags $ setExtension $ read ext
+applyExtensionText :: GhcMonad m => Text -> m ()
+applyExtensionText (stripPrefix "No" -> Just ext@(maybeStartsWith True isUpper -> True)) = overDynFlags $ unsetExtension $ tread ext
+applyExtensionText ext = overDynFlags $ setExtension $ tread ext

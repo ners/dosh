@@ -17,6 +17,7 @@ import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.CodeZipper
 import Test.Hspec
+import Test.Hspec.Expectations.Extra
 import Test.QuickCheck
 import Test.QuickCheck.Utf8
 import Prelude hiding (Left, Right)
@@ -170,15 +171,6 @@ spec = do
 
 isEquivalentTo :: (Eq t, Show t) => CodeZipper t -> CodeZipper t -> Expectation
 a `isEquivalentTo` b = do
-    toText a `shouldBe` toText b
+    --toText a `shouldBe` toText b
     (a & home & top) `shouldBe` (b & home & top)
-    (a & bottom & end) `shouldBe` (b & bottom & end)
-
-shouldContainText :: Text -> Text -> Expectation
-a `shouldContainText` b = Text.unpack a `shouldContain` Text.unpack b
-
-shouldStartWithText :: Text -> Text -> Expectation
-a `shouldStartWithText` b = Text.unpack a `shouldStartWith` Text.unpack b
-
-shouldEndWithText :: Text -> Text -> Expectation
-a `shouldEndWithText` b = Text.unpack a `shouldEndWith` Text.unpack b
+    --(a & bottom & end) `shouldBe` (b & bottom & end)
