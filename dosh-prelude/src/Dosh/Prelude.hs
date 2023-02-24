@@ -34,4 +34,3 @@ import Data.Text (Text)
 import Debug.Trace
 import System.IO
 import Prelude
-

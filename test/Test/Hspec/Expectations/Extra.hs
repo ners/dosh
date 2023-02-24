@@ -1,10 +1,10 @@
 module Test.Hspec.Expectations.Extra where
 
+import Control.Monad (unless)
+import Data.List (isPrefixOf)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Test.Hspec
-import Control.Monad (unless)
-import Data.List (isPrefixOf)
 
 expectTrue :: HasCallStack => String -> Bool -> Expectation
 expectTrue msg b = unless b (expectationFailure msg)
@@ -13,7 +13,6 @@ compareWith :: (HasCallStack, Show a) => (a -> a -> Bool) -> String -> a -> a ->
 compareWith comparator errorDesc result expected = expectTrue errorMsg (comparator expected result)
   where
     errorMsg = show result ++ " " ++ errorDesc ++ " " ++ show expected
-
 
 shouldContainText :: Text -> Text -> Expectation
 a `shouldContainText` b = Text.unpack a `shouldContain` Text.unpack b

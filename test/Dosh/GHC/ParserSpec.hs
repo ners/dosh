@@ -2,12 +2,12 @@
 
 module Dosh.GHC.ParserSpec where
 
+import Data.Text qualified as Text
+import Dosh.GHC.Parser
 import Dosh.Prelude hiding (elements)
 import Test.Hspec
 import Test.Hspec.Expectations.Extra
 import Test.QuickCheck
-import Dosh.GHC.Parser
-import qualified Data.Text as Text
 
 instance Show Code where
     show (L (show -> loc) code) = loc <> ": " <> show code
@@ -34,10 +34,10 @@ locate (L loc code) = do
     srcLocCol start `shouldBe` 1
     srcLocLine end `shouldBe` length codeLines
     srcLocCol end `shouldBe` max 1 (Text.length (last codeLines))
-    where
-        start = realSrcSpanStart loc
-        end = realSrcSpanEnd loc
-        codeLines = Text.splitOn "\n" code
+  where
+    start = realSrcSpanStart loc
+    end = realSrcSpanEnd loc
+    codeLines = Text.splitOn "\n" code
 
 splitAndMerge :: Code -> Expectation
 splitAndMerge c = locatedUnlines (splitCode c) `shouldBe` c
@@ -47,9 +47,9 @@ notAdjacent c = do
     let chunks = splitCode c
     forM_ (zip chunks $ tail chunks) $ \(L loc1 _, L loc2 _) -> do
         loc2 `shouldStartAfterLine` endLine loc1
-
-    where shouldStartAfterLine :: RealSrcSpan -> Int -> Expectation
-          loc `shouldStartAfterLine` l = startLine loc `shouldSatisfy` (> l)
+  where
+    shouldStartAfterLine :: RealSrcSpan -> Int -> Expectation
+    loc `shouldStartAfterLine` l = startLine loc `shouldSatisfy` (> l)
 
 notIndented :: Code -> Expectation
 notIndented c = do

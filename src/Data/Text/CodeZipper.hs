@@ -17,7 +17,10 @@ data Token t = Token
     { tokenType :: t
     , tokenContent :: Text
     }
-    deriving (Generic, Eq, Show)
+    deriving (Generic, Eq)
+
+instance Show t => Show (Token t) where
+    show Token{..} = show tokenType <> " " <> show tokenContent
 
 type SourceLine t = [Token t]
 
@@ -47,10 +50,11 @@ empty =
         , tokensAfter = mempty
         }
 
-plainZipper :: Pretty t => Text -> CodeZipper t
-plainZipper t = empty{linesAfter, tokensAfter}
+plainZipper :: Pretty t => Text -> Text -> CodeZipper t
+plainZipper before after = empty{linesBefore, linesAfter, tokensBefore, tokensAfter}
   where
-    (tokensAfter, linesAfter) = fromMaybe ([], []) $ uncons (plain t)
+    (reverse -> tokensBefore, linesBefore) = fromMaybe ([], []) $ uncons $ reverse $ plain before
+    (tokensAfter, linesAfter) = fromMaybe ([], []) $ uncons $ plain after
 
 prettyZipper :: Pretty t => Text -> Text -> Maybe (CodeZipper t)
 prettyZipper language t = pretty language t <&> \(fromMaybe ([], []) . uncons -> (tokensAfter, linesAfter)) -> empty{language, tokensAfter, linesAfter}

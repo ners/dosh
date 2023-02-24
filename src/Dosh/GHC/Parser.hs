@@ -11,30 +11,30 @@ import GHC.Types.SrcLoc
 type Code = RealLocated Text
 
 {- | Split a code object into chunks. A chunk is a sequence of lines that should be evaluated in the same way;
-   either as a module or as expressions.
+  either as a module or as expressions.
 
-   Chunks are separated by an empty line followed by a graphical character on the zero column.
+  Chunks are separated by an empty line followed by a graphical character on the zero column.
 
-   An example of code with four chunks that parse as expected:
+  An example of code with four chunks that parse as expected:
 
-   > {-# LANGUAGE OverloadedStrings #-}
-   >
-   > import Dosh.Prelude
-   > import Data.Text qualified as Text
-   >
+  > {\-# LANGUAGE OverloadedStrings #-\}
+  >
+  > import Dosh.Prelude
+  > import Data.Text qualified as Text
+  >
+  > startsWith :: (Char -> Bool) -> Text -> Bool
+  > startsWith f = maybe False f . Text.uncons
+  >
+  > startsWith isSpace "example"
+
+  If we remove the last empty line between the declaration and function call,
+  the chunks will be merged and parsed as one:
+
    > startsWith :: (Char -> Bool) -> Text -> Bool
    > startsWith f = maybe False f . Text.uncons
-   >
    > startsWith isSpace "example"
 
-   If we remove the last empty line between the declaration and function call,
-   the chunks will be merged and parsed as one:
-
-   > startsWith :: (Char -> Bool) -> Text -> Bool
-   > startsWith f = maybe False f . Text.uncons
-   > startsWith isSpace "example"
-
-   This will cause a parsing error, because expressions are not allowed in a module chunk.
+  This will cause a parsing error, because expressions are not allowed in a module chunk.
 -}
 splitCode :: Code -> [Code]
 splitCode code = reverse $ foldl' appendLine [] $ locatedLines code
@@ -42,8 +42,8 @@ splitCode code = reverse $ foldl' appendLine [] $ locatedLines code
     appendLine :: [Code] -> Code -> [Code]
     appendLine [] line = [line]
     appendLine (c : cs) line
-        | maybeStartsWith True isSpace (unLoc line) || not (isNewline c)
-            = locatedUnlines [c, line] : cs
+        | maybeStartsWith True isSpace (unLoc line) || not (isNewline c) =
+            locatedUnlines [c, line] : cs
         | otherwise = line : c : cs
     isNewline = maybeEndsWith True (== '\n') . unLoc
 

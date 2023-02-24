@@ -39,9 +39,6 @@ instance Arbitrary PrintableToken where
 
 type PrintableLine = SourceLine Printable
 
-arbitraryLine :: (Arbitrary (Token t), Eq t) => Gen (SourceLine t)
-arbitraryLine = normaliseToks <$> listOf arbitrary
-
 instance Pretty Printable where
     plain = fmap onSpace . Text.split (== '\n')
       where
@@ -58,13 +55,17 @@ instance Pretty Printable where
 instance Arbitrary Text where
     arbitrary = genValidUtf8
 
-instance (Arbitrary (Token t), Eq t) => Arbitrary (CodeZipper t) where
-    arbitrary = do
-        linesBefore <- listOf arbitraryLine
-        linesAfter <- listOf arbitraryLine
-        tokensBefore <- arbitraryLine
-        tokensAfter <- arbitraryLine
-        pure CodeZipper{language = "", ..}
+instance (Arbitrary (Token t), Pretty t, Eq t) => Arbitrary (CodeZipper t) where
+    arbitrary = oneof [fromTokens, fromText]
+      where
+        fromTokens = do
+            linesBefore <- scale (`div` 2) $ listOf arbitraryLine
+            linesAfter <- scale (`div` 2) $ listOf arbitraryLine
+            tokensBefore <- arbitraryLine
+            tokensAfter <- arbitraryLine
+            pure CodeZipper{language = "", ..}
+        fromText = plainZipper <$> arbitrary <*> arbitrary
+        arbitraryLine = scale (`div` 4) $ normaliseToks <$> listOf arbitrary
 
 data Move = Up | Down | Left | Right | Home | End | Top | Bottom
     deriving (Bounded, Enum, Eq, Show)
@@ -94,7 +95,14 @@ instance Arbitrary Move where arbitrary = elements [minBound .. maxBound]
 type MoveSequence = [Move]
 
 isomorphicText :: (Eq t, Show t, Pretty t) => CodeZipper t -> Expectation
-isomorphicText cz = plainZipper (toText cz) `isEquivalentTo` cz
+isomorphicText cz = do
+    let t = toText cz
+        tb = textBefore cz
+        ta = textAfter cz
+    tb <> ta `shouldBe` t
+    plainZipper t "" `isEquivalentTo` cz
+    plainZipper "" t `isEquivalentTo` cz
+    plainZipper tb ta `isEquivalentTo` cz
 
 isNormalised :: (Eq t, Show t, Pretty t) => CodeZipper t -> Expectation
 isNormalised cz = allLines cz `shouldSatisfy` all normalised
@@ -171,6 +179,4 @@ spec = do
 
 isEquivalentTo :: (Eq t, Show t) => CodeZipper t -> CodeZipper t -> Expectation
 a `isEquivalentTo` b = do
-    --toText a `shouldBe` toText b
     (a & home & top) `shouldBe` (b & home & top)
-    --(a & bottom & end) `shouldBe` (b & bottom & end)
