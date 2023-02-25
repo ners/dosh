@@ -1,6 +1,5 @@
 module Main where
 
-import Data.Generics.Labels ()
 import Dosh.GHC.Client qualified as GHC
 import Dosh.GHC.Server qualified as GHC
 import Dosh.Notebook

@@ -39,38 +39,57 @@ locate (L loc code) = do
     end = realSrcSpanEnd loc
     codeLines = Text.splitOn "\n" code
 
-splitAndMerge :: Code -> Expectation
-splitAndMerge c = locatedUnlines (splitCode c) `shouldBe` c
+splitAndMergeChunks :: Code -> Expectation
+splitAndMergeChunks c = locatedUnlines (splitChunks c) `shouldBe` c
 
-notAdjacent :: Code -> Expectation
-notAdjacent c = do
-    let chunks = splitCode c
-    forM_ (zip chunks $ tail chunks) $ \(L loc1 _, L loc2 _) -> do
-        loc2 `shouldStartAfterLine` endLine loc1
-  where
-    shouldStartAfterLine :: RealSrcSpan -> Int -> Expectation
-    loc `shouldStartAfterLine` l = startLine loc `shouldSatisfy` (> l)
+splitAndMergeExpressions :: Code -> Expectation
+splitAndMergeExpressions c = locatedUnlines (splitExpressions c) `shouldBe` c
 
-notIndented :: Code -> Expectation
-notIndented c = do
-    let chunks = splitCode $ locatedUnlines ["x", c]
+shouldStartOnLine :: RealSrcSpan -> Int -> Expectation
+loc `shouldStartOnLine` l = startLine loc `shouldBe` l
+
+chunksAreNotAdjacent :: Code -> Expectation
+chunksAreNotAdjacent c = do
+    let chunks = splitChunks c
+    forM_ (zip chunks $ tail chunks) $ \(L loc1 chunk1, L loc2 _) -> do
+        loc2 `shouldStartOnLine` (endLine loc1 + 1)
+        unless (Text.null chunk1) $ chunk1 `shouldEndWithText` "\n"
+
+expressionsAreAdjacent :: Code -> Expectation
+expressionsAreAdjacent c = do
+    let exprs = splitExpressions c
+    forM_ (zip exprs $ tail exprs) $ \(L loc1 expr1, L loc2 _) -> do
+        loc2 `shouldStartOnLine` (endLine loc1 + 1)
+        expr1 `shouldNotEndWithText` "\n"
+
+chunksAreNotIndented :: Code -> Expectation
+chunksAreNotIndented c = do
+    let chunks = splitChunks $ locatedUnlines ["x", c]
     forM_ chunks $ \(L _ chunk) -> chunk `shouldNotStartWithText` " "
+
+expressionsAreNotIndented :: Code -> Expectation
+expressionsAreNotIndented c = do
+    let exprs = splitExpressions $ locatedUnlines ["x", c]
+    forM_ exprs $ \(L _ expr) -> expr `shouldNotStartWithText` " "
 
 spec :: Spec
 spec = do
     it "locates code correctly" $ property locate
-    it "splits and merges code correctly" $ property splitAndMerge
+    it "splits and merges chunks correctly" $ property splitAndMergeChunks
+    it "splits and merges expressions correctly" $ property splitAndMergeExpressions
     it "splits empty text correctly" $ property $ do
-        splitCode "" `shouldBe` [""]
+        splitChunks "" `shouldBe` [""]
     it "splits single line correctly" $ property $ do
-        splitCode "\n" `shouldBe` ["\n" `atLine` 1]
-        splitCode "foo" `shouldBe` ["foo" `atLine` 1]
-        splitCode "foo\n" `shouldBe` ["foo\n" `atLine` 1]
+        splitChunks "\n" `shouldBe` ["\n" `atLine` 1]
+        splitChunks "foo" `shouldBe` ["foo" `atLine` 1]
+        splitChunks "foo\n" `shouldBe` ["foo\n" `atLine` 1]
     it "splits one chunk correctly" $ property $ do
-        splitCode "foo\nbar" `shouldBe` ["foo\nbar" `atLine` 1]
-        splitCode "foo\nbar\n" `shouldBe` ["foo\nbar\n" `atLine` 1]
+        splitChunks "foo\nbar" `shouldBe` ["foo\nbar" `atLine` 1]
+        splitChunks "foo\nbar\n" `shouldBe` ["foo\nbar\n" `atLine` 1]
     it "splits two chunks correctly" $ property $ do
-        splitCode "\nfoo\nbar" `shouldBe` ["" `atLine` 1, "foo\nbar" `atLine` 2]
-        splitCode "foo\n\nbar" `shouldBe` ["foo\n" `atLine` 1, "bar" `atLine` 3]
-    it "does not produce adjacent chunks" $ property notAdjacent
-    it "does not produce indented chunks" $ property notIndented
+        splitChunks "\nfoo\nbar" `shouldBe` ["" `atLine` 1, "foo\nbar" `atLine` 2]
+        splitChunks "foo\n\nbar" `shouldBe` ["foo\n" `atLine` 1, "bar" `atLine` 3]
+    it "does not produce adjacent chunks" $ property chunksAreNotAdjacent
+    it "produces adjacent expressions" $ property expressionsAreAdjacent
+    it "does not produce indented chunks" $ property chunksAreNotIndented
+    it "does not produce indented expressions" $ property expressionsAreNotIndented

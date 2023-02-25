@@ -1,7 +1,7 @@
 module Test.Hspec.Expectations.Extra where
 
 import Control.Monad (unless)
-import Data.List (isPrefixOf)
+import Data.List (isPrefixOf, isSuffixOf)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Test.Hspec
@@ -27,5 +27,11 @@ a `shouldEndWithText` b = Text.unpack a `shouldEndWith` Text.unpack b
 shouldNotStartWith :: (Eq a, Show a) => [a] -> [a] -> Expectation
 shouldNotStartWith = compareWith ((not .) . isPrefixOf) "should not start with"
 
+shouldNotEndWith :: (Eq a, Show a) => [a] -> [a] -> Expectation
+shouldNotEndWith = compareWith ((not .) . isSuffixOf) "should not end with"
+
 shouldNotStartWithText :: Text -> Text -> Expectation
 a `shouldNotStartWithText` b = Text.unpack a `shouldNotStartWith` Text.unpack b
+
+shouldNotEndWithText :: Text -> Text -> Expectation
+a `shouldNotEndWithText` b = Text.unpack a `shouldNotEndWith` Text.unpack b

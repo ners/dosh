@@ -1,6 +1,15 @@
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
 
-module Dosh.GHC.Parser (module GHC.Types.SrcLoc, Code, splitCode, locatedText, locatedLines, locatedUnlines) where
+module Dosh.GHC.Parser
+    ( module GHC.Types.SrcLoc
+    , Code
+    , splitChunks
+    , splitExpressions
+    , locatedText
+    , locatedLines
+    , locatedUnlines
+    )
+where
 
 import Data.Text qualified as Text
 import Dosh.Prelude
@@ -36,8 +45,8 @@ type Code = RealLocated Text
 
   This will cause a parsing error, because expressions are not allowed in a module chunk.
 -}
-splitCode :: Code -> [Code]
-splitCode code = reverse $ foldl' appendLine [] $ locatedLines code
+splitChunks :: Code -> [Code]
+splitChunks code = reverse $ foldl' appendLine [] $ locatedLines code
   where
     appendLine :: [Code] -> Code -> [Code]
     appendLine [] line = [line]
@@ -47,6 +56,20 @@ splitCode code = reverse $ foldl' appendLine [] $ locatedLines code
         | otherwise = line : c : cs
     isNewline :: Code -> Bool
     isNewline = maybeEndsWith True (== '\n') . unLoc
+
+{- | Split a code object into expressions.
+
+  Expressions are lines that start with a graphical character on the zero column.
+-}
+splitExpressions :: Code -> [Code]
+splitExpressions code = reverse $ foldl' appendLine [] $ locatedLines code
+  where
+    appendLine :: [Code] -> Code -> [Code]
+    appendLine [] line = [line]
+    appendLine (e : es) line
+        | maybeStartsWith False isSpace (unLoc line) =
+            locatedUnlines [e, line] : es
+        | otherwise = line : e : es
 
 locatedText :: FastString -> Int -> Text -> RealLocated Text
 locatedText file firstLine t = L (mkRealSrcSpan from to) t

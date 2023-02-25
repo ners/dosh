@@ -40,9 +40,7 @@ common common
         TypeFamilies
         ViewPatterns
     build-depends:
-        base,
-        dosh-prelude,
-        text
+        dosh-prelude
 
 library
     import:           common
@@ -63,6 +61,7 @@ library
     other-modules:
         Reflex.Vty.Widget.Input.Code
     build-depends:
+        base,
         bytestring,
         containers,
         data-default,
@@ -89,6 +88,7 @@ library
         transformers-base,
         unordered-containers,
         uuid,
+        text,
         vty
 
 executable dosh
@@ -103,9 +103,8 @@ executable dosh
         -g3
     build-depends:
         dosh,
-        ghc,
-        ghc-paths,
-        process
+        reflex,
+        reflex-vty
 
 test-suite dosh-test
     import:           common
@@ -114,12 +113,14 @@ test-suite dosh-test
     main-is:          Spec.hs
     hs-source-dirs:   test
     build-depends:
-        async,
         QuickCheck,
+        async,
+        base,
         dosh,
         extra,
         hspec,
-        quickcheck-text
+        quickcheck-text,
+        text
     other-modules:
         Dosh.GHC.ParserSpec,
         Data.Sequence.ZipperSpec,
