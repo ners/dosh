@@ -36,6 +36,8 @@ library
         generic-lens,
         lens,
         sixel,
-        text
+        text,
+        unliftio,
+        unliftio-core
     exposed-modules:
         Dosh.Prelude

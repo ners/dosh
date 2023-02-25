@@ -5,7 +5,6 @@ module Dosh.Notebook where
 
 import Control.Lens
 import Control.Monad.Fix
-import Control.Monad.IO.Class
 import Data.HashMap.Strict (HashMap)
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Maybe (fromJust, fromMaybe)

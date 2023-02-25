@@ -2,7 +2,6 @@
 
 module Dosh.GHC.Session where
 
-import Control.Monad.IO.Class (liftIO)
 import Data.Text (stripPrefix, unpack)
 import Development.IDE.GHC.Compat qualified as GHC
 import Dosh.Prelude

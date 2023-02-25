@@ -74,10 +74,8 @@ library
         ghcide,
         hls-plugin-api,
         lens,
-        lifted-async,
         lsp-test,
         lsp-types,
-        monad-control,
         mtl,
         process,
         reflex,
@@ -85,7 +83,6 @@ library
         skylighting,
         skylighting-core,
         template-haskell,
-        transformers-base,
         unordered-containers,
         uuid,
         text,
@@ -114,15 +111,12 @@ test-suite dosh-test
     hs-source-dirs:   test
     build-depends:
         QuickCheck,
-        async,
         base,
         bytestring,
         dosh,
         extra,
-        ghc,
-        ghc-paths,
+        ghcide,
         hspec,
-        process,
         quickcheck-text,
         text
     other-modules:

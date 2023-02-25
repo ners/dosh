@@ -1,16 +1,16 @@
+{-# LANGUAGE LambdaCase #-}
 module Dosh.GHC.EvaluatorSpec where
 
 import Control.Exception (SomeException)
-import Control.Monad.IO.Class (liftIO)
 import Data.ByteString (hGetSome)
 import Data.ByteString.Builder.Extra (defaultChunkSize)
 import Data.Text qualified as Text
+import Development.IDE.GHC.Compat (Ghc)
 import Dosh.GHC.Client ()
 import Dosh.GHC.Evaluator qualified as GHC
 import Dosh.GHC.Server qualified as GHC
 import Dosh.Prelude hiding (elements, log)
 import Dosh.Util
-import GHC (Ghc)
 import Test.Hspec
 import Test.QuickCheck
 
@@ -18,15 +18,18 @@ runGhcSession :: Ghc () -> IO (ByteString, [Text])
 runGhcSession a = do
     output <- newMVar ""
     errors <- newMVar []
+    done <- newEmptyMVar
     let reportError :: SomeException -> IO ()
         reportError = modifyMVar_ errors . (pure .) . (:) . tshow
-    (input, outputH, _) <- GHC.server' reportError
+    (input, outputH, _) <- GHC.asyncServer reportError
     input $ do
         let exec = a >> GHC.evaluate "mapM_ hFlush [stdout, stderr]"
         let log = forever $ liftIO $ do
                 content <- hGetSome outputH defaultChunkSize
                 modifyMVar_ output $ pure . (<> content)
         raceWithDelay_ 1000 exec log
+        liftIO $ putMVar done ()
+    withTimeout 1_000_000 $ takeMVar done
     (,) <$> takeMVar output <*> takeMVar errors
 
 data Input
@@ -80,13 +83,11 @@ instance Arbitrary Chunk where
 
 toValidText :: Chunk -> Text
 toValidText (Chunk inputs) = foldr addInput "" $ zip inputs (tail $ cycle inputs)
-    where
-        addInput :: (Input, Input) -> Text -> Text
-        addInput (i@Expression{},Declaration{}) = ((tshow i <> "\n\n") <>)
-        addInput (i@Expression{},Import{}) = ((tshow i <> "\n\n") <>)
-        addInput (i@Declaration{},Expression{}) = ((tshow i <> "\n\n") <>)
-        addInput (i@Import{},Expression{}) = ((tshow i <> "\n\n") <>)
-        addInput (i,_) = ((tshow i <> "\n") <>)
+  where
+    addInput :: (Input, Input) -> Text -> Text
+    addInput (i@Expression{}, _) = ((tshow i <> "\n\n") <>)
+    addInput (i, Expression{}) = ((tshow i <> "\n\n") <>)
+    addInput (i, _) = ((tshow i <> "\n") <>)
 
 instance Show Chunk where
     show = Text.unpack . toValidText

@@ -3,7 +3,6 @@
 module Dosh.GHC.Server where
 
 import Control.Monad.Catch (MonadMask, SomeException, bracket, catch)
-import Control.Monad.IO.Class (MonadIO, liftIO)
 import Dosh.GHC.Session qualified as GHC
 import Dosh.Prelude
 import GHC (Ghc, runGhc)
@@ -30,11 +29,11 @@ server
     => m (Server t)
 server = do
     (onError, reportError) <- newTriggerEvent
-    (input, output, error) <- liftIO $ server' reportError
+    (input, output, error) <- liftIO $ asyncServer reportError
     pure Server{..}
 
-server' :: (SomeException -> IO ()) -> IO (Ghc () -> IO (), Handle, Handle)
-server' reportError = do
+asyncServer :: (SomeException -> IO ()) -> IO (Ghc () -> IO (), Handle, Handle)
+asyncServer reportError = do
     i <- newEmptyMVar
     o <- newEmptyMVar
     -- TODO: try to use Knob rather than pipes
@@ -44,8 +43,7 @@ server' reportError = do
     (errRead, errWrite) <- createPipe
     hSetBuffering errRead NoBuffering
     hSetBuffering errWrite NoBuffering
-    void $ forkIO $ runGhc (Just GHC.libdir) $ do
-        GHC.initialiseSession
+    void $ forkIO $ syncServer $ do
         forever $ do
             action <- liftIO $ takeMVar i
             hCapture [(stdout, outWrite), (stderr, errWrite)] action
@@ -53,6 +51,11 @@ server' reportError = do
             liftIO $ putMVar o ()
     let input = putMVar i >>> (*> takeMVar o)
     pure (input, outRead, errRead)
+
+syncServer :: Ghc () -> IO ()
+syncServer a = runGhc (Just GHC.libdir) $ do
+    GHC.initialiseSession
+    a
 
 hCapture :: forall m a. (MonadIO m, MonadMask m) => [(Handle, Handle)] -> m a -> m a
 hCapture handleMap action = go handleMap

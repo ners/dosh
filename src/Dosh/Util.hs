@@ -1,8 +1,5 @@
 module Dosh.Util where
 
-import Control.Concurrent.Async.Lifted (race_)
-import Control.Monad.Base (liftBase)
-import Control.Monad.Trans.Control (MonadBaseControl)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Text qualified as Text
@@ -78,10 +75,8 @@ getLines handle =
 {- | Run two @IO@ actions concurrently.
  The loser of the race is 'cancel'led after a delay (in microseconds).
 -}
-raceWithDelay_ :: MonadBaseControl IO m => Int -> m a -> m b -> m ()
-raceWithDelay_ d a b = race_ (a <* delay') (b <* delay')
-  where
-    delay' = liftBase $ threadDelay d
+raceWithDelay_ :: MonadUnliftIO m => Int -> m a -> m b -> m ()
+raceWithDelay_ (threadDelay -> d) a b = race_ (a <* d) (b <* d)
 
 attach2 :: Reflex t => (Behavior t a, Behavior t b) -> Event t c -> Event t (a, b, c)
 attach2 (b1, b2) e = attach b1 (attach b2 e) <&> \(a, (b, c)) -> (a, b, c)
@@ -107,3 +102,6 @@ newlined :: Text -> Text
 newlined t
     | maybeEndsWith False (== '\n') t = t
     | otherwise = t <> "\n"
+
+withTimeout :: (MonadUnliftIO m, MonadFail m) => Int -> m a -> m a
+withTimeout = ((maybe (fail "Timeout exceeded") pure =<<) .) . timeout

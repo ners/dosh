@@ -4,10 +4,8 @@
 
 module Dosh.LSP.Client where
 
-import Control.Monad.IO.Class (MonadIO (liftIO))
-import Data.Functor ((<&>))
-import Data.Text (Text)
 import Dosh.LSP.Server (Server (..))
+import Dosh.Prelude
 import Dosh.Util
 import Language.LSP.Test (request)
 import Language.LSP.Types
@@ -33,7 +31,7 @@ client
     :: forall t m
      . ( PerformEvent t m
        , TriggerEvent t m
-       , MonadIO (Performable m)
+       , MonadUnliftIO (Performable m)
        )
     => Server t
     -> m (Client t)

@@ -3,7 +3,6 @@
 module Dosh.Cell where
 
 import Control.Monad.Fix
-import Control.Monad.IO.Class
 import Data.Default (Default)
 import Data.Generics.Labels ()
 import Data.Text qualified as Text

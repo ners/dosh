@@ -4,11 +4,7 @@
 module Data.Text.CodeZipperSpec where
 
 import Control.Arrow ((>>>))
-import Control.Concurrent (threadDelay)
-import Control.Concurrent.Async (race)
-import Control.Exception (AssertionFailed (..), throw)
 import Data.Char (isSpace)
-import Data.Either.Extra (fromEither)
 import Data.Function ((&))
 import Data.List (uncons)
 import Data.List.Extra (groupOn)
@@ -82,16 +78,6 @@ move End = end
 move Top = top
 move Bottom = bottom
 
-tryMove :: Eq t => Move -> CodeZipper t -> IO (CodeZipper t)
-tryMove m = within' 100 . pure . move m
-
-within' :: Int -> IO a -> IO a
-within' ms e = do
-    winner <- race e $ do
-        threadDelay ms
-        throw $ AssertionFailed "Timeout exceeded"
-    pure $ fromEither winner
-
 instance Arbitrary Move where arbitrary = elements [minBound .. maxBound]
 
 type MoveSequence = [Move]
@@ -135,8 +121,7 @@ goTop cz = do
 
 goMove :: (Eq t) => Move -> CodeZipper t -> Expectation
 goMove m cz = do
-    cz' <- tryMove m cz
-    position cz' `shouldBe` expectedNewPosition
+    position (move m cz) `shouldBe` expectedNewPosition
   where
     position :: CodeZipper t -> (Int, Int)
     position z = (col z, row z)
@@ -157,12 +142,11 @@ goMove m cz = do
 
 unchangedByMovement :: (Eq t, Show t) => Move -> CodeZipper t -> Expectation
 unchangedByMovement m cz = do
-    cz' <- tryMove m cz
-    cz' `isEquivalentTo` cz
+    move m cz `isEquivalentTo` cz
 
 insertText :: (Eq t, Pretty t) => CodeZipper t -> Text -> Expectation
 insertText cz t = do
-    cz' <- within' 100 $ pure $ insert t cz
+    let cz' = insert t cz
     toText cz' `shouldContainText` t
     textBefore cz' `shouldBe` (textBefore cz <> t)
     textAfter cz' `shouldBe` textAfter cz

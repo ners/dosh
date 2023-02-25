@@ -6,11 +6,8 @@
 
 module Dosh.GHC.Client where
 
-import Control.Monad.Base (MonadBase (..))
 import Control.Monad.Catch (SomeException, catch)
-import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader (ReaderT (..))
-import Control.Monad.Trans.Control (MonadBaseControl (..))
 import Data.ByteString (hGetSome)
 import Data.ByteString.Builder.Extra (defaultChunkSize)
 import Data.Generics.Labels ()
@@ -61,6 +58,4 @@ client ghc = do
             liftIO $ respond EndResponse{..}
     pure Client{..}
 
-deriving via (ReaderT Session IO) instance MonadBase IO Ghc
-
-deriving via (ReaderT Session IO) instance MonadBaseControl IO Ghc
+deriving via (ReaderT Session IO) instance MonadUnliftIO Ghc
