@@ -116,13 +116,18 @@ test-suite dosh-test
         QuickCheck,
         async,
         base,
+        bytestring,
         dosh,
         extra,
+        ghc,
+        ghc-paths,
         hspec,
+        process,
         quickcheck-text,
         text
     other-modules:
         Dosh.GHC.ParserSpec,
+        Dosh.GHC.EvaluatorSpec,
         Data.Sequence.ZipperSpec,
         Data.Text.CodeZipperSpec,
         Test.Hspec.Expectations.Extra,

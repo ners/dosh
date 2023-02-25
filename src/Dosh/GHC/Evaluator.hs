@@ -18,4 +18,5 @@ evaluateModule :: GhcMonad m => HsModule -> m ()
 evaluateModule _ = void $ execStmt "putStrLn \"Modules are not yet supported\"" execOptions
 
 evaluateChunk :: GhcMonad m => Code -> m ()
-evaluateChunk code = void $ execStmt (Text.unpack $ unLoc code) execOptions
+evaluateChunk (splitExpressions -> exprs) = do
+    forM_ exprs $ flip execStmt execOptions . Text.unpack . unLoc

@@ -2,31 +2,18 @@
 
 module Dosh.GHC.Server where
 
-import Control.Arrow ((>>>))
-import Control.Concurrent (forkIO, newEmptyMVar, putMVar, takeMVar)
-import Control.Monad (forever)
 import Control.Monad.Catch (MonadMask, SomeException, bracket, catch)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Dosh.GHC.Session qualified as GHC
+import Dosh.Prelude
 import GHC (Ghc, runGhc)
-import GHC.IO.Handle (BufferMode (NoBuffering), hDuplicate, hDuplicateTo)
+import GHC.IO.Handle (hDuplicate, hDuplicateTo)
 import GHC.Paths qualified as GHC
 import Reflex
     ( Event
     , TriggerEvent (newTriggerEvent)
     )
-import System.IO
-    ( Handle
-    , SeekMode (AbsoluteSeek)
-    , hClose
-    , hGetBuffering
-    , hSeek
-    , hSetBuffering
-    , stderr
-    , stdout
-    )
 import System.Process (createPipe)
-import Prelude
 
 data Server t = Server
     { input :: Ghc () -> IO ()
@@ -43,36 +30,29 @@ server
     => m (Server t)
 server = do
     (onError, reportError) <- newTriggerEvent
-    i <- liftIO newEmptyMVar
-    o <- liftIO newEmptyMVar
-    (output, error) <- liftIO $ do
-        -- TODO: try to use Knob rather than pipes
-        (outRead, outWrite) <- createPipe
-        hSetBuffering outRead NoBuffering
-        hSetBuffering outWrite NoBuffering
-        (errRead, errWrite) <- createPipe
-        hSetBuffering errRead NoBuffering
-        hSetBuffering errWrite NoBuffering
-        forkIO $ runGhc (Just GHC.libdir) $ do
-            GHC.initialiseSession
-            forever $ do
-                action <- liftIO $ takeMVar i
-                hCapture [(stdout, outWrite), (stderr, errWrite)] action
-                    `catch` (liftIO . reportError)
-                liftIO $ putMVar o ()
-        pure (outRead, errRead)
-    pure
-        Server
-            { input = putMVar i >>> (*> takeMVar o)
-            , output
-            , error
-            , onError
-            }
+    (input, output, error) <- liftIO $ server' reportError
+    pure Server{..}
 
--- instance PerformEvent t m => PerformEvent t (GhcT m) where
---    type Performable (GhcT m) = Performable m
---    performEvent = liftGhcT . performEvent
---    performEvent_ = liftGhcT . performEvent_
+server' :: (SomeException -> IO ()) -> IO (Ghc () -> IO (), Handle, Handle)
+server' reportError = do
+    i <- newEmptyMVar
+    o <- newEmptyMVar
+    -- TODO: try to use Knob rather than pipes
+    (outRead, outWrite) <- createPipe
+    hSetBuffering outRead NoBuffering
+    hSetBuffering outWrite NoBuffering
+    (errRead, errWrite) <- createPipe
+    hSetBuffering errRead NoBuffering
+    hSetBuffering errWrite NoBuffering
+    void $ forkIO $ runGhc (Just GHC.libdir) $ do
+        GHC.initialiseSession
+        forever $ do
+            action <- liftIO $ takeMVar i
+            hCapture [(stdout, outWrite), (stderr, errWrite)] action
+                `catch` (liftIO . reportError)
+            liftIO $ putMVar o ()
+    let input = putMVar i >>> (*> takeMVar o)
+    pure (input, outRead, errRead)
 
 hCapture :: forall m a. (MonadIO m, MonadMask m) => [(Handle, Handle)] -> m a -> m a
 hCapture handleMap action = go handleMap
