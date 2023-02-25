@@ -5,6 +5,7 @@ import Data.List (isPrefixOf)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Test.Hspec
+import Prelude
 
 expectTrue :: HasCallStack => String -> Bool -> Expectation
 expectTrue msg b = unless b (expectationFailure msg)

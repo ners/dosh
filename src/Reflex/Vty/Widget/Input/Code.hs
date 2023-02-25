@@ -31,8 +31,9 @@ import Reflex.Vty.Widget.Input.Mouse
 import Reflex.Vty.Widget.Input.Text
 import Skylighting qualified as S
 import Skylighting.Types (TokenType (..))
+import Prelude
 
-deriving instance Generic tag => Generic (Span tag)
+deriving stock instance Generic (Span tag)
 
 type Token = CZ.Token TokenType
 
@@ -107,7 +108,7 @@ data CodeInput t = CodeInput
 
 codeInput
     :: forall t m
-     . (Reflex t, MonadHold t m, MonadFix m, HasInput t m, HasFocusReader t m, HasTheme t m, HasDisplayRegion t m, HasImageWriter t m, HasDisplayRegion t m)
+     . (MonadHold t m, MonadFix m, HasInput t m, HasFocusReader t m, HasTheme t m, HasImageWriter t m, HasDisplayRegion t m)
     => CodeInputConfig t
     -> m (CodeInput t)
 codeInput cfg = mdo

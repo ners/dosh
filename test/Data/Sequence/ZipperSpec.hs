@@ -9,6 +9,7 @@ import Data.Sequence.Zipper
 import GHC.Exts (IsList (..))
 import Test.Hspec hiding (before)
 import Test.QuickCheck
+import Prelude
 
 instance Arbitrary t => Arbitrary (SeqZipper t) where
     arbitrary :: Gen (SeqZipper t)
@@ -34,7 +35,7 @@ data Move
     | Back
     | Home
     | End
-    deriving (Show, Eq, Bounded, Enum)
+    deriving stock (Show, Eq, Bounded, Enum)
 
 instance Arbitrary Move where arbitrary = elements [minBound .. maxBound]
 
@@ -52,7 +53,7 @@ performMoves = foldl' (flip performMove)
 unchangedByMovement :: (Eq t, Show t) => SeqZipper t -> MoveSequence -> Expectation
 unchangedByMovement zipper moves = performMoves zipper moves `shouldBeEquivalentTo` zipper
 
-itMoves :: (Eq t, Show t) => Move -> SeqZipper t -> Expectation
+itMoves :: Move -> SeqZipper t -> Expectation
 itMoves m zipper = newPosition `shouldBe` expectedNewPosition
   where
     position = length (before zipper)

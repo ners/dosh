@@ -12,12 +12,13 @@ import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import GHC.Generics (Generic)
+import Prelude
 
 data Token t = Token
     { tokenType :: t
     , tokenContent :: Text
     }
-    deriving (Generic, Eq)
+    deriving stock (Generic, Eq)
 
 instance Show t => Show (Token t) where
     show Token{..} = show tokenType <> " " <> show tokenContent
@@ -38,7 +39,7 @@ data CodeZipper t = CodeZipper
     , tokensBefore :: [Token t]
     , tokensAfter :: [Token t]
     }
-    deriving (Eq, Show)
+    deriving stock (Eq, Show)
 
 empty :: CodeZipper t
 empty =
@@ -64,9 +65,10 @@ currentLine CodeZipper{tokensBefore, tokensAfter} =
     normaliseToks $ reverse tokensBefore <> tokensAfter
 
 null :: CodeZipper t -> Bool
-null CodeZipper{..} = null linesBefore && null linesAfter && null tokensBefore && null tokensAfter
+null CodeZipper{..} = no linesBefore && no linesAfter && no tokensBefore && no tokensAfter
   where
-    null = Prelude.null
+    no :: [a] -> Bool
+    no = Prelude.null
 
 lines :: CodeZipper t -> Int
 lines CodeZipper{linesBefore, linesAfter} = length linesBefore + 1 + length linesAfter
@@ -94,7 +96,7 @@ textAfter :: CodeZipper t -> Text
 textAfter CodeZipper{linesAfter, tokensAfter} =
     Text.intercalate "\n" $ lineToText <$> (tokensAfter : linesAfter)
 
-toText :: Eq t => CodeZipper t -> Text
+toText :: CodeZipper t -> Text
 toText cz = textBefore cz <> textAfter cz
 
 lineToText :: SourceLine t -> Text
@@ -292,9 +294,10 @@ splitTokenAt' i t = (a, b, c')
     (a, c) = splitTokenAt i t
     (b, c') = splitTokenAt 1 c
 
-normaliseToks :: Eq t => [Token t] -> [Token t]
+normaliseToks :: forall t. Eq t => [Token t] -> [Token t]
 normaliseToks = foldr maybePrepend []
   where
+    maybePrepend :: Token t -> [Token t] -> [Token t]
     maybePrepend (nullToken -> True) acc = acc
     maybePrepend t (p : ps) | t.tokenType == p.tokenType = prepend t.tokenContent p : ps
     maybePrepend t ps = t : ps

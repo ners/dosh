@@ -2,20 +2,17 @@
 
 module Dosh.Cell where
 
-import Control.Monad
 import Control.Monad.Fix
 import Control.Monad.IO.Class
-import Data.ByteString (ByteString)
 import Data.Default (Default)
-import Data.Functor ((<&>))
 import Data.Generics.Labels ()
-import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.CodeZipper qualified as CZ
 import Data.Text.Encoding qualified as Text
 import Data.UUID (UUID)
 import Data.UUID qualified as UUID
 import Data.UUID.V4 qualified as UUID
+import Dosh.Prelude
 import Dosh.Util
 import GHC.Generics (Generic)
 import Graphics.Vty qualified as V
@@ -62,8 +59,7 @@ data CellEvent
 
 cell
     :: forall t m
-     . ( Reflex t
-       , PerformEvent t m
+     . ( PerformEvent t m
        , TriggerEvent t m
        , HasFocusReader t m
        , HasImageWriter t m
@@ -74,8 +70,6 @@ cell
        , HasTheme t m
        , MonadHold t m
        , MonadIO (Performable m)
-       , MonadHold t (Performable m)
-       , MonadFix (Performable m)
        )
     => Cell
     -> m (Event t CellEvent)
@@ -149,5 +143,5 @@ cell c = do
     -- grout (fixed $ pure 1) $ row $ text $ current $ tshow <$> codeZipper
     pure cellEvent
 
-colorText :: forall t m. (Reflex t, Monad m, HasDisplayRegion t m, HasImageWriter t m, HasTheme t m) => V.Color -> Behavior t Text -> m ()
+colorText :: forall t m. (HasDisplayRegion t m, HasImageWriter t m, HasTheme t m) => V.Color -> Behavior t Text -> m ()
 colorText c = richText RichTextConfig{_richTextConfig_attributes = pure $ V.withForeColor V.currentAttr c}

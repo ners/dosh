@@ -45,6 +45,7 @@ splitCode code = reverse $ foldl' appendLine [] $ locatedLines code
         | maybeStartsWith True isSpace (unLoc line) || not (isNewline c) =
             locatedUnlines [c, line] : cs
         | otherwise = line : c : cs
+    isNewline :: Code -> Bool
     isNewline = maybeEndsWith True (== '\n') . unLoc
 
 locatedText :: FastString -> Int -> Text -> RealLocated Text

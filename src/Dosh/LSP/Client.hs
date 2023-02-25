@@ -1,5 +1,6 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
+{-# OPTIONS_GHC -Wno-partial-fields #-}
 
 module Dosh.LSP.Client where
 
@@ -30,10 +31,8 @@ data Client t = Client
 
 client
     :: forall t m
-     . ( Reflex t
-       , PerformEvent t m
+     . ( PerformEvent t m
        , TriggerEvent t m
-       , MonadIO m
        , MonadIO (Performable m)
        )
     => Server t

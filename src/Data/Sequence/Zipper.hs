@@ -7,6 +7,7 @@ import Data.Sequence (Seq, ViewL (..), ViewR (..), (<|), (|>))
 import Data.Sequence qualified as Seq
 import GHC.Exts (IsList (..))
 import GHC.Generics (Generic)
+import Prelude
 
 data SeqZipper t = SeqZipper
     { before :: Seq t

@@ -3,24 +3,17 @@
 
 module Dosh.LSP.Server where
 
-import Control.Arrow ((>>>))
-import Control.Concurrent (forkIO, newEmptyMVar, putMVar, takeMVar)
-import Control.Monad (forever)
 import Control.Monad.Catch (SomeException, catch)
-import Control.Monad.Fix (MonadFix)
 import Control.Monad.IO.Class (MonadIO (..))
 import Development.IDE (Recorder (..), WithPriority, noLogging)
 import Development.IDE.Main (Arguments (..), Log, defaultArguments, defaultMain)
+import Dosh.Prelude
 import Ide.Types (IdePlugins (IdePlugins))
 import Language.LSP.Test qualified as LSP
 import Reflex
-    ( MonadHold
-    , PerformEvent (Performable)
-    , PostBuild
-    , Reflex (Event)
+    ( Reflex (Event)
     , TriggerEvent (newTriggerEvent)
     )
-import System.IO (BufferMode (NoBuffering), Handle, hSetBuffering)
 import System.Process (createPipe)
 
 data Server t = Server
@@ -32,14 +25,8 @@ data Server t = Server
 
 server
     :: forall t m
-     . ( Reflex t
-       , MonadIO m
-       , PerformEvent t m
+     . ( MonadIO m
        , TriggerEvent t m
-       , MonadIO (Performable m)
-       , PostBuild t m
-       , MonadFix m
-       , MonadHold t m
        )
     => m (Server t)
 server = do
@@ -74,6 +61,7 @@ server = do
 ghcide :: Recorder (WithPriority Log) -> Handle -> Handle -> IO ()
 ghcide recorder stdin stdout = do
     let logger = noLogging
+        plugins :: IdePlugins ideState
         plugins = IdePlugins []
         arguments =
             (defaultArguments recorder logger plugins)

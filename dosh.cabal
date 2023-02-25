@@ -13,7 +13,15 @@ build-type:         Simple
 common common
     default-language: GHC2021
     ghc-options:
-        -Wall
+        -O2
+        -j
+        -Weverything
+        -Wno-unsafe
+        -Wno-missing-safe-haskell-mode
+        -Wno-missing-export-lists
+        -Wno-missing-import-lists
+        -Wno-missing-kind-signatures
+        -Wno-all-missed-specialisations
     default-extensions:
         ApplicativeDo
         DataKinds
@@ -23,6 +31,7 @@ common common
         DerivingStrategies
         DerivingVia
         ExplicitNamespaces
+        NoImplicitPrelude
         OverloadedLabels
         OverloadedRecordDot
         OverloadedStrings
@@ -32,15 +41,7 @@ common common
         ViewPatterns
     build-depends:
         base,
-        bytestring,
-        data-default,
         dosh-prelude,
-        generic-lens,
-        lens,
-        lifted-async,
-        reflex,
-        reflex-vty,
-        template-haskell,
         text
 
 library
@@ -52,6 +53,7 @@ library
         Dosh.Cell,
         Dosh.GHC.Client,
         Dosh.GHC.Parser,
+        Dosh.GHC.Evaluator,
         Dosh.GHC.Server,
         Dosh.GHC.Session,
         Dosh.LSP.Client,
@@ -61,26 +63,29 @@ library
     other-modules:
         Reflex.Vty.Widget.Input.Code
     build-depends:
+        bytestring,
         containers,
-        deepseq,
+        data-default,
         exceptions,
         extra,
+        generic-lens,
         ghc,
         ghc-paths,
         ghc-syntax-highlighter,
         ghcide,
-        haskell-language-server,
         hls-plugin-api,
-        knob,
-        lsp,
+        lens,
+        lifted-async,
         lsp-test,
         lsp-types,
         monad-control,
         mtl,
         process,
-        ref-tf,
+        reflex,
+        reflex-vty,
         skylighting,
         skylighting-core,
+        template-haskell,
         transformers-base,
         unordered-containers,
         uuid,
@@ -114,9 +119,7 @@ test-suite dosh-test
         dosh,
         extra,
         hspec,
-        hspec-expectations,
-        quickcheck-text,
-        vty
+        quickcheck-text
     other-modules:
         Dosh.GHC.ParserSpec,
         Data.Sequence.ZipperSpec,

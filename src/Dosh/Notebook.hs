@@ -3,7 +3,6 @@
 
 module Dosh.Notebook where
 
-import Control.Arrow ((>>>))
 import Control.Lens
 import Control.Monad.Fix
 import Control.Monad.IO.Class
@@ -18,6 +17,7 @@ import Data.UUID.V4 qualified as UUID
 import Dosh.Cell
 import Dosh.Cell qualified as Cell
 import Dosh.GHC.Client qualified as GHC
+import Dosh.Prelude
 import Dosh.Util
 import GHC.Data.Maybe (isJust)
 import GHC.Exts (IsList (toList))
@@ -72,8 +72,7 @@ overCurrentCell f n = flip (maybe n) (currentCellUid n) $ \uid -> overUid uid f 
 
 notebook
     :: forall t m
-     . ( Reflex t
-       , PerformEvent t m
+     . ( PerformEvent t m
        , HasInput t m
        , MonadFix m
        , HasImageWriter t m
@@ -83,16 +82,13 @@ notebook
        , HasLayout t m
        , MonadHold t m
        , MonadIO (Performable m)
-       , MonadHold t (Performable m)
-       , MonadFix (Performable m)
-       , PostBuild t m
        , TriggerEvent t m
        )
     => GHC.Client t
     -> Notebook
     -> m (Event t Notebook)
 notebook ghc n = do
-    cellEvents :: Event t [(UUID, CellEvent)] <- NonEmpty.toList <$$> (mergeList . toList) <$> for n.cellOrder (\cid -> (cid,) <$$> cell (fromJust $ n ^. #cells . at cid))
+    cellEvents :: Event t [(UUID, CellEvent)] <- NonEmpty.toList <$$> (mergeList . GHC.Exts.toList) <$> for n.cellOrder (\cid -> (cid,) <$$> cell (fromJust $ n ^. #cells . at cid))
     cellUpdates :: Event t (Notebook -> Notebook) <- foldr (.) id <$$> performEvent (traverse (uncurry $ handleCellEvent ghc) <$> cellEvents)
     let ghcUpdates :: Event t (Notebook -> Notebook)
         ghcUpdates = (\(id, u) -> #cells . ix id %~ u) . handleGhcResponse <$> ghc.onResponse

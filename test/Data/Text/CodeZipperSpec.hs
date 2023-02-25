@@ -23,7 +23,7 @@ import Test.QuickCheck.Utf8
 import Prelude hiding (Left, Right)
 
 data Printable = Graphic | Whitespace
-    deriving (Eq, Show)
+    deriving stock (Eq, Show)
 
 type PrintableToken = Token Printable
 
@@ -58,6 +58,7 @@ instance Arbitrary Text where
 instance (Arbitrary (Token t), Pretty t, Eq t) => Arbitrary (CodeZipper t) where
     arbitrary = oneof [fromTokens, fromText]
       where
+        fromTokens, fromText :: Gen (CodeZipper t)
         fromTokens = do
             linesBefore <- scale (`div` 2) $ listOf arbitraryLine
             linesAfter <- scale (`div` 2) $ listOf arbitraryLine
@@ -65,10 +66,11 @@ instance (Arbitrary (Token t), Pretty t, Eq t) => Arbitrary (CodeZipper t) where
             tokensAfter <- arbitraryLine
             pure CodeZipper{language = "", ..}
         fromText = plainZipper <$> arbitrary <*> arbitrary
+        arbitraryLine :: Gen (SourceLine t)
         arbitraryLine = scale (`div` 4) $ normaliseToks <$> listOf arbitrary
 
 data Move = Up | Down | Left | Right | Home | End | Top | Bottom
-    deriving (Bounded, Enum, Eq, Show)
+    deriving stock (Bounded, Enum, Eq, Show)
 
 move :: Eq t => Move -> CodeZipper t -> CodeZipper t
 move Up = up
@@ -104,13 +106,13 @@ isomorphicText cz = do
     plainZipper "" t `isEquivalentTo` cz
     plainZipper tb ta `isEquivalentTo` cz
 
-isNormalised :: (Eq t, Show t, Pretty t) => CodeZipper t -> Expectation
+isNormalised :: (Eq t, Show t) => CodeZipper t -> Expectation
 isNormalised cz = allLines cz `shouldSatisfy` all normalised
 
 normalised :: Eq t => SourceLine t -> Bool
 normalised = groupOn tokenType >>> fmap length >>> all (<= 1)
 
-goHome :: (Eq t, Show t, Pretty t) => CodeZipper t -> Expectation
+goHome :: (Eq t, Show t) => CodeZipper t -> Expectation
 goHome cz = do
     let cz' = home cz
     cz'.tokensBefore `shouldBe` mempty
@@ -124,18 +126,19 @@ goHome cz = do
         Nothing -> cz.tokensBefore
         Just t -> t : drop 1 cz.tokensBefore
 
-goTop :: (Eq t, Show t, Pretty t) => CodeZipper t -> Expectation
+goTop :: (Eq t, Show t) => CodeZipper t -> Expectation
 goTop cz = do
     let cz' = top cz
     cz'.linesBefore `shouldBe` mempty
     cz'.linesAfter `shouldBe` maybe [] snd (uncons (allLines cz))
     top cz' `shouldBe` cz'
 
-goMove :: (Eq t, Show t) => Move -> CodeZipper t -> Expectation
+goMove :: (Eq t) => Move -> CodeZipper t -> Expectation
 goMove m cz = do
     cz' <- tryMove m cz
     position cz' `shouldBe` expectedNewPosition
   where
+    position :: CodeZipper t -> (Int, Int)
     position z = (col z, row z)
     (x, y) = position cz
     expectedNewPosition = xyClamp $ case m of
@@ -157,14 +160,14 @@ unchangedByMovement m cz = do
     cz' <- tryMove m cz
     cz' `isEquivalentTo` cz
 
-insertText :: (Eq t, Show t, Pretty t) => CodeZipper t -> Text -> Expectation
+insertText :: (Eq t, Pretty t) => CodeZipper t -> Text -> Expectation
 insertText cz t = do
     cz' <- within' 100 $ pure $ insert t cz
     toText cz' `shouldContainText` t
     textBefore cz' `shouldBe` (textBefore cz <> t)
     textAfter cz' `shouldBe` textAfter cz
 
-showZipper :: (Eq t, Show t, Pretty t) => CodeZipper t -> String
+showZipper :: (Show t) => CodeZipper t -> String
 showZipper cz = unlines [show cz, show [textBefore cz, textAfter cz]]
 
 spec :: Spec

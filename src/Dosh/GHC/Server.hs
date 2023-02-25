@@ -13,7 +13,6 @@ import GHC.IO.Handle (BufferMode (NoBuffering), hDuplicate, hDuplicateTo)
 import GHC.Paths qualified as GHC
 import Reflex
     ( Event
-    , Reflex
     , TriggerEvent (newTriggerEvent)
     )
 import System.IO
@@ -38,8 +37,7 @@ data Server t = Server
 
 server
     :: forall t m
-     . ( Reflex t
-       , TriggerEvent t m
+     . ( TriggerEvent t m
        , MonadIO m
        )
     => m (Server t)

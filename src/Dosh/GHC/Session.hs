@@ -3,7 +3,6 @@
 module Dosh.GHC.Session where
 
 import Control.Monad.IO.Class (liftIO)
-import Data.Generics.Labels ()
 import Data.Text (stripPrefix, unpack)
 import Development.IDE.GHC.Compat qualified as GHC
 import Dosh.Prelude
@@ -15,7 +14,7 @@ import GHC.Generics (Generic)
 import GHC.Platform.Ways qualified as GHC
 import Language.Haskell.TH.LanguageExtensions
 
-deriving instance Generic GHC.DynFlags
+deriving stock instance Generic GHC.DynFlags
 
 setExtension :: GHC.Extension -> GHC.DynFlags -> GHC.DynFlags
 setExtension = flip GHC.xopt_set
@@ -53,7 +52,7 @@ initialiseSession = do
             >>> setExtension GHC.IncoherentInstances
     addImport "Dosh.Prelude"
 
-deriving instance Generic (GHC.ImportDecl GHC.GhcPs)
+deriving stock instance Generic (GHC.ImportDecl GHC.GhcPs)
 
 addImport :: GhcMonad m => Text -> m ()
 addImport lib = do

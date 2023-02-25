@@ -89,7 +89,7 @@ attach2 (b1, b2) e = attach b1 (attach b2 e) <&> \(a, (b, c)) -> (a, b, c)
 attach3 :: Reflex t => (Behavior t a, Behavior t b, Behavior t c) -> Event t d -> Event t (a, b, c, d)
 attach3 (b1, b2, b3) e = attach b1 (attach2 (b2, b3) e) <&> \(a, (b, c, d)) -> (a, b, c, d)
 
-blankLine :: forall t m. (Reflex t, Monad m, HasLayout t m, HasInput t m, HasImageWriter t m, HasDisplayRegion t m, HasFocusReader t m) => m ()
+blankLine :: forall t m. (HasLayout t m, HasInput t m, HasImageWriter t m, HasDisplayRegion t m, HasFocusReader t m) => m ()
 blankLine = grout (fixed $ pure 1) blank
 
 toMaybe :: Bool -> a -> Maybe a

@@ -1,10 +1,10 @@
 module Main where
 
-import Control.Monad
 import Data.Generics.Labels ()
 import Dosh.GHC.Client qualified as GHC
 import Dosh.GHC.Server qualified as GHC
 import Dosh.Notebook
+import Dosh.Prelude
 import Dosh.Util
 import Reflex.Network (networkView)
 import Reflex.Vty
