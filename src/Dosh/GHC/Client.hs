@@ -6,7 +6,6 @@
 
 module Dosh.GHC.Client where
 
-import Control.Monad.Catch (SomeException, catch)
 import Control.Monad.Reader (ReaderT (..))
 import Data.ByteString (hGetSome)
 import Data.ByteString.Builder.Extra (defaultChunkSize)

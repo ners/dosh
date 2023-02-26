@@ -13,7 +13,6 @@ import Data.UUID qualified as UUID
 import Data.UUID.V4 qualified as UUID
 import Dosh.Prelude
 import Dosh.Util
-import GHC.Generics (Generic)
 import Graphics.Vty qualified as V
 import Reflex
 import Reflex.Vty

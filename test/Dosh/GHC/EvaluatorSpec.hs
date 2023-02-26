@@ -1,49 +1,36 @@
+{-# OPTIONS_GHC -Wno-orphans #-}
 {-# LANGUAGE LambdaCase #-}
+
 module Dosh.GHC.EvaluatorSpec where
 
-import Control.Exception (SomeException)
-import Data.ByteString (hGetSome)
-import Data.ByteString.Builder.Extra (defaultChunkSize)
 import Data.Text qualified as Text
+import Data.Text.Encoding qualified as Text
 import Development.IDE.GHC.Compat (Ghc)
-import Dosh.GHC.Client ()
 import Dosh.GHC.Evaluator qualified as GHC
 import Dosh.GHC.Server qualified as GHC
-import Dosh.Prelude hiding (elements, log)
+import Dosh.Prelude hiding (elements)
 import Dosh.Util
 import Test.Hspec
 import Test.QuickCheck
 
-runGhcSession :: Ghc () -> IO (ByteString, [Text])
-runGhcSession a = do
-    output <- newMVar ""
-    errors <- newMVar []
-    done <- newEmptyMVar
-    let reportError :: SomeException -> IO ()
-        reportError = modifyMVar_ errors . (pure .) . (:) . tshow
-    (input, outputH, _) <- GHC.asyncServer reportError
-    input $ do
-        let exec = a >> GHC.evaluate "mapM_ hFlush [stdout, stderr]"
-        let log = forever $ liftIO $ do
-                content <- hGetSome outputH defaultChunkSize
-                modifyMVar_ output $ pure . (<> content)
-        raceWithDelay_ 1000 exec log
-        liftIO $ putMVar done ()
-    withTimeout 1_000_000 $ takeMVar done
-    (,) <$> takeMVar output <*> takeMVar errors
+runGhcSession :: Ghc () -> IO (ByteString, ByteString, [SomeException])
+runGhcSession action = do
+    GHC.testServer $ do
+        action
+        GHC.evaluate "mapM_ hFlush [stdout, stderr]"
 
 data Input
     = Pragma Text Text
     | Import Text
     | Declaration Text
-    | Expression Text
-    deriving stock (Eq)
+    | Expression Text Text
+    deriving stock (Generic, Eq)
 
 instance Show Input where
     show (Pragma x y) = Text.unpack $ "{-# " <> x <> " " <> y <> " #-}"
     show (Import x) = Text.unpack $ "import " <> x
     show (Declaration x) = Text.unpack x
-    show (Expression x) = Text.unpack x
+    show (Expression x _) = Text.unpack x
 
 arbitraryPragma :: Gen Input
 arbitraryPragma = Pragma "LANGUAGE" <$> elements extensions
@@ -52,7 +39,7 @@ arbitraryPragma = Pragma "LANGUAGE" <$> elements extensions
     extensions = foldr (\e acc -> e : ("No" <> e) : acc) [] ["OverloadedStrings", "OverloadedLabels"]
 
 arbitraryImport :: Gen Input
-arbitraryImport = pure $ Import "Data.Default"
+arbitraryImport = Import <$> elements ["Data.Default", "Data.Text"]
 
 arbitraryDeclaration :: Gen Input
 arbitraryDeclaration =
@@ -64,7 +51,21 @@ arbitraryDeclaration =
                 ]
 
 arbitraryExpression :: Gen Input
-arbitraryExpression = pure $ Expression "True"
+arbitraryExpression =
+    uncurry Expression
+        <$> elements
+            [ ("True", "True\n")
+            ,
+                ( Text.intercalate "\n"
+                    [ "fromIntegral $"
+                    , "  let x = 1"
+                    , "      y = 2"
+                    , "   in x + y"
+                    ]
+                , "3\n"
+                )
+            , ("putStrLn \"Hello!\"", "Hello!\n")
+            ]
 
 instance Arbitrary Input where
     arbitrary =
@@ -75,7 +76,7 @@ instance Arbitrary Input where
             , arbitraryExpression
             ]
 
-newtype Chunk = Chunk [Input]
+newtype Chunk = Chunk {inputs :: [Input]}
     deriving stock (Eq)
 
 instance Arbitrary Chunk where
@@ -85,6 +86,7 @@ toValidText :: Chunk -> Text
 toValidText (Chunk inputs) = foldr addInput "" $ zip inputs (tail $ cycle inputs)
   where
     addInput :: (Input, Input) -> Text -> Text
+    addInput (i@Expression{}, Expression{}) = ((tshow i <> "\n") <>)
     addInput (i@Expression{}, _) = ((tshow i <> "\n\n") <>)
     addInput (i, Expression{}) = ((tshow i <> "\n\n") <>)
     addInput (i, _) = ((tshow i <> "\n") <>)
@@ -92,13 +94,24 @@ toValidText (Chunk inputs) = foldr addInput "" $ zip inputs (tail $ cycle inputs
 instance Show Chunk where
     show = Text.unpack . toValidText
 
+instance Eq SomeException where
+    a == b = tshow a == tshow b
+
 evalValidChunks :: Chunk -> Expectation
-evalValidChunks (toValidText -> chunk) = runGhcSession (GHC.evaluate chunk) `shouldReturn` ("", [])
+evalValidChunks chunk =
+    withTimeout (1_000_000 + 100_000 * length chunk.inputs) $
+        runGhcSession (GHC.evaluate $ toValidText chunk) `shouldReturn` (expectedOutput, "", [])
+  where
+    expectedOutput = mconcat $ output <$> chunk.inputs
+    output (Expression _ o) = Text.encodeUtf8 o
+    output _ = ""
+
+quietly :: Property -> IO ()
+quietly = quickCheckWithResult (stdArgs{chatty=False}) >=> \case
+    Success{} -> pure ()
+    Failure{output} -> expectationFailure output
+    GaveUp{output} -> expectationFailure output
+    NoExpectedFailure{output} -> expectationFailure output
 
 spec :: Spec
-spec = do
-    it "evaluates empty string" $ property $ do
-        runGhcSession (GHC.evaluate "") `shouldReturn` ("", [])
-    it "evaluates hello world" $ property $ do
-        runGhcSession (GHC.evaluate "putStrLn \"Hello world!\"") `shouldReturn` ("Hello world!\n", [])
-    it "evaluates well-formed chunks" $ property evalValidChunks
+spec = it "evaluates chunks" $ quietly $ property evalValidChunks

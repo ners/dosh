@@ -2,9 +2,9 @@
 
 module Dosh.GHC.Server where
 
-import Control.Monad.Catch (MonadMask, SomeException, bracket, catch)
 import Dosh.GHC.Session qualified as GHC
 import Dosh.Prelude
+import Dosh.Util
 import GHC (Ghc, runGhc)
 import GHC.IO.Handle (hDuplicate, hDuplicateTo)
 import GHC.Paths qualified as GHC
@@ -43,7 +43,8 @@ asyncServer reportError = do
     (errRead, errWrite) <- createPipe
     hSetBuffering errRead NoBuffering
     hSetBuffering errWrite NoBuffering
-    void $ forkIO $ syncServer $ do
+    void $ forkIO $ runGhc (Just GHC.libdir) $ do
+        GHC.initialiseSession
         forever $ do
             action <- liftIO $ takeMVar i
             hCapture [(stdout, outWrite), (stderr, errWrite)] action
@@ -52,10 +53,15 @@ asyncServer reportError = do
     let input = putMVar i >>> (*> takeMVar o)
     pure (input, outRead, errRead)
 
-syncServer :: Ghc () -> IO ()
-syncServer a = runGhc (Just GHC.libdir) $ do
-    GHC.initialiseSession
-    a
+testServer :: Ghc () -> IO (ByteString, ByteString, [SomeException])
+testServer action = do
+    errors <- newMVar []
+    let reportError :: SomeException -> IO ()
+        reportError = modifyMVar_ errors . (pure .) . (:)
+    (i, o, e) <- asyncServer reportError
+    i action
+    threadDelay 1_000
+    (,,) <$> getAvailableContents o <*> getAvailableContents e <*> takeMVar errors
 
 hCapture :: forall m a. (MonadIO m, MonadMask m) => [(Handle, Handle)] -> m a -> m a
 hCapture handleMap action = go handleMap

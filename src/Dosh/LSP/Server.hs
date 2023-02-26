@@ -3,7 +3,6 @@
 
 module Dosh.LSP.Server where
 
-import Control.Monad.Catch (SomeException, catch)
 import Development.IDE (Recorder (..), WithPriority, noLogging)
 import Development.IDE.Main (Arguments (..), Log, defaultArguments, defaultMain)
 import Dosh.Prelude

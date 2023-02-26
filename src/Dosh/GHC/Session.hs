@@ -9,7 +9,6 @@ import Dosh.Util
 import GHC (GhcMonad)
 import GHC qualified
 import GHC.Driver.Session qualified as GHC
-import GHC.Generics (Generic)
 import GHC.Platform.Ways qualified as GHC
 import Language.Haskell.TH.LanguageExtensions
 

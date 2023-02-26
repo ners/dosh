@@ -1,10 +1,12 @@
 module Dosh.Util where
 
+import Control.Monad.Extra (whenMaybeM, whileJustM)
+import Data.ByteString (hGetSome)
+import Data.ByteString.Builder.Extra (defaultChunkSize)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
-import Data.Text.IO qualified as Text
 import Dosh.Prelude
 import Graphics.Vty (Key (..), Modifier (..))
 import Reflex
@@ -59,18 +61,8 @@ transformMap =
         (const mempty)
         id
 
-getAvailableLines :: Handle -> IO [Text]
-getAvailableLines handle = do
-    hasOutput <- hReady handle
-    if hasOutput
-        then (:) <$> Text.hGetLine handle <*> getAvailableLines handle
-        else pure []
-
-getLines :: Handle -> IO [Text]
-getLines handle =
-    (:)
-        <$> Text.hGetLine handle
-        <*> getAvailableLines handle
+getAvailableContents :: Handle -> IO ByteString
+getAvailableContents h = whileJustM $ whenMaybeM (hReady h) (hGetSome h defaultChunkSize)
 
 {- | Run two @IO@ actions concurrently.
  The loser of the race is 'cancel'led after a delay (in microseconds).

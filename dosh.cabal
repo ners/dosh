@@ -65,7 +65,6 @@ library
         bytestring,
         containers,
         data-default,
-        exceptions,
         extra,
         generic-lens,
         ghc,
@@ -112,7 +111,6 @@ test-suite dosh-test
     build-depends:
         QuickCheck,
         base,
-        bytestring,
         dosh,
         extra,
         ghcide,

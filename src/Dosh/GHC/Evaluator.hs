@@ -19,13 +19,14 @@ evaluateModule :: GhcMonad m => HsModule -> m ()
 evaluateModule _ = void $ execStmt "putStrLn \"Modules are not yet supported\"" execOptions
 
 evaluateChunk :: GhcMonad m => Code -> m ()
+evaluateChunk (Text.null . unLoc -> True) = pure ()
 evaluateChunk chunk = tryParsers [tryEvaluateExpressions, tryEvaluateDecls]
   where
     tryParsers (p : ps) = unlessM (p chunk) $ tryParsers ps
     tryParsers [] = void $ execStmt "putStrLn \"Could not parse chunk!\"" execOptions
 
 tryEvaluateExpressions :: GhcMonad m => Code -> m Bool
-tryEvaluateExpressions (fmap (Text.unpack . unLoc) . splitExpressions -> exprs) = do
+tryEvaluateExpressions (fmap (Text.unpack . unLoc) . filter (not . Text.null . unLoc) . splitExpressions -> exprs) = do
     flags <- getSessionDynFlags
     let isExpr (flip (runParser flags) parseExpression -> POk{}) = True
         isExpr _ = False

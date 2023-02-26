@@ -7,7 +7,6 @@ import Control.Lens
 import Control.Monad.Fix
 import Data.HashMap.Strict (HashMap)
 import Data.List.NonEmpty qualified as NonEmpty
-import Data.Maybe (fromJust, fromMaybe)
 import Data.Sequence.Zipper (SeqZipper)
 import Data.Sequence.Zipper qualified as SZ
 import Data.Traversable (for)
@@ -18,9 +17,7 @@ import Dosh.Cell qualified as Cell
 import Dosh.GHC.Client qualified as GHC
 import Dosh.Prelude
 import Dosh.Util
-import GHC.Data.Maybe (isJust)
 import GHC.Exts (IsList (toList))
-import GHC.Generics (Generic)
 import Reflex hiding (Query, Response)
 import Reflex.Vty hiding (Query, Response)
 
