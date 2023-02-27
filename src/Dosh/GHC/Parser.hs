@@ -1,4 +1,6 @@
+{-# LANGUAGE CPP #-}
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 module Dosh.GHC.Parser
     ( module GHC.Types.SrcLoc
@@ -18,6 +20,10 @@ import GHC.Data.FastString (FastString)
 import GHC.Types.SrcLoc
 
 type Code = RealLocated Text
+
+#if !MIN_VERSION_ghc(9,4,0)
+deriving stock instance Show Code
+#endif
 
 {- | Split a code object into chunks. A chunk is a sequence of lines that should be evaluated in the same way;
   either as a module or as expressions.

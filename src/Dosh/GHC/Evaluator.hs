@@ -28,8 +28,9 @@ evaluateChunk chunk = tryParsers [tryEvaluateExpressions, tryEvaluateDecls]
 tryEvaluateExpressions :: GhcMonad m => Code -> m Bool
 tryEvaluateExpressions (fmap (Text.unpack . unLoc) . filter (not . Text.null . unLoc) . splitExpressions -> exprs) = do
     flags <- getSessionDynFlags
-    let isExpr (flip (runParser flags) parseExpression -> POk{}) = True
-        isExpr _ = False
+    let isExpr s = case runParser flags s parseExpression of
+            POk{} -> True
+            _ -> False
     if all isExpr exprs
         then do
             forM_ exprs $ \e -> execStmt e execOptions

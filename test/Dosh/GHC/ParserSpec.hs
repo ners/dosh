@@ -9,9 +9,6 @@ import Test.Hspec
 import Test.Hspec.Expectations.Extra
 import Test.QuickCheck
 
-instance Show Code where
-    show (L (show -> loc) code) = loc <> ": " <> show code
-
 atLine :: Text -> Int -> Code
 atLine = flip $ locatedText "<test>"
 
