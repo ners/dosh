@@ -5,7 +5,7 @@ module Data.Text.CodeZipper where
 
 import Data.Function ((&))
 import Data.Functor ((<&>))
-import Data.List (uncons)
+import Data.List (find, uncons)
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Maybe (fromMaybe)
@@ -87,6 +87,14 @@ currentToken :: Eq t => CodeZipper t -> Maybe (Token t)
 currentToken CodeZipper{tokensBefore = []} = Nothing
 currentToken CodeZipper{tokensBefore = tb : _, tokensAfter = []} = Just tb
 currentToken CodeZipper{tokensBefore = tb : _, tokensAfter = ta : _} = Just $ maybe tb fst (uncons (normaliseToks [tb, ta]))
+
+nextChar :: CodeZipper t -> Maybe Char
+nextChar CodeZipper{tokensAfter = [], linesAfter = []} = Nothing
+nextChar CodeZipper{tokensAfter} = maybe (Just '\n') (Just . Text.head . tokenContent) $ find ((> 0) . tokenWidth) tokensAfter
+
+prevChar :: CodeZipper t -> Maybe Char
+prevChar CodeZipper{tokensBefore = [], linesBefore = []} = Nothing
+prevChar CodeZipper{tokensBefore} = maybe (Just '\n') (Just . Text.last . tokenContent) $ find ((> 0) . tokenWidth) tokensBefore
 
 textBefore :: CodeZipper t -> Text
 textBefore CodeZipper{linesBefore, tokensBefore} =

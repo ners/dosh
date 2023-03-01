@@ -5,6 +5,8 @@
 module Dosh.GHC.Parser
     ( module GHC.Types.SrcLoc
     , Code
+    , Chunk (..)
+    , CodeChunk
     , splitChunks
     , splitExpressions
     , locatedText
@@ -14,6 +16,8 @@ module Dosh.GHC.Parser
 where
 
 import Data.Text qualified as Text
+import Development.IDE (ParseResult (..), runParser)
+import Development.IDE.GHC.Compat.Core (DynFlags, GhcMonad, GhcPs, HsModule (..), LHsDecl, getSessionDynFlags, parseExpression, parseModule)
 import Dosh.Prelude
 import Dosh.Util
 import GHC.Data.FastString (FastString)
@@ -24,6 +28,13 @@ type Code = RealLocated Text
 #if !MIN_VERSION_ghc(9,4,0)
 deriving stock instance Show Code
 #endif
+
+data Chunk
+    = ModuleChunk Code
+    | DeclarationChunk [LHsDecl GhcPs]
+    | ExpressionChunk [Code]
+
+type CodeChunk = RealLocated Chunk
 
 {- | Split a code object into chunks. A chunk is a sequence of lines that should be evaluated in the same way;
   either as a module or as expressions.
@@ -51,8 +62,10 @@ deriving stock instance Show Code
 
   This will cause a parsing error, because expressions are not allowed in a module chunk.
 -}
-splitChunks :: Code -> [Code]
-splitChunks code = reverse $ foldl' appendLine [] $ locatedLines code
+splitChunks :: GhcMonad m => Code -> m [CodeChunk]
+splitChunks code = do
+    let chunks = reverse $ foldl' appendLine [] $ locatedLines code
+    mapM decideChunk chunks
   where
     appendLine :: [Code] -> Code -> [Code]
     appendLine [] line = [line]
@@ -62,6 +75,33 @@ splitChunks code = reverse $ foldl' appendLine [] $ locatedLines code
         | otherwise = line : c : cs
     isNewline :: Code -> Bool
     isNewline = maybeEndsWith True (== '\n') . unLoc
+
+decideChunk :: forall m. GhcMonad m => Code -> m CodeChunk
+decideChunk c@(L loc _) = do
+    flags <- getSessionDynFlags
+    let def = ExpressionChunk [c]
+        parsed = foldr1 (<|>) $ [parseModuleChunk, parseExprChunk, parseDeclChunk] <&> (c &) . (flags &)
+    pure $ L loc $ fromMaybe def parsed
+
+parseModuleChunk :: DynFlags -> Code -> Maybe Chunk
+parseModuleChunk flags c@(Text.unpack . unLoc -> code) = case runParser flags code parseModule of
+    POk _ (unLoc -> (hsmodName -> Just _)) -> Just $ ModuleChunk c
+    _ -> Nothing
+
+parseExprChunk :: DynFlags -> Code -> Maybe Chunk
+parseExprChunk flags (splitExpressions -> exprs)
+    | all isExpr exprs = Just $ ExpressionChunk exprs
+    | otherwise = Nothing
+  where
+    isExpr (Text.unpack . unLoc -> "") = True
+    isExpr (Text.unpack . unLoc -> code) = case runParser flags code parseExpression of
+        POk{} -> True
+        _ -> False
+
+parseDeclChunk :: DynFlags -> Code -> Maybe Chunk
+parseDeclChunk flags (Text.unpack . unLoc -> code) = case runParser flags code parseModule of
+    POk _ (hsmodDecls . unLoc -> decls) -> Just $ DeclarationChunk decls
+    _ -> Nothing
 
 {- | Split a code object into expressions.
 

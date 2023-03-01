@@ -50,8 +50,8 @@ library
         Data.Sequence.Zipper,
         Dosh.Cell,
         Dosh.GHC.Client,
-        Dosh.GHC.Parser,
         Dosh.GHC.Evaluator,
+        Dosh.GHC.Parser,
         Dosh.GHC.Server,
         Dosh.GHC.Session,
         Dosh.LSP.Client,
@@ -82,9 +82,9 @@ library
         skylighting,
         skylighting-core,
         template-haskell,
+        text,
         unordered-containers,
         uuid,
-        text,
         vty
 
 executable dosh

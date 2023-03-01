@@ -1,4 +1,5 @@
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
@@ -16,12 +17,9 @@ import Dosh.GHC.Server (Server (..))
 import Dosh.Prelude
 import Dosh.Util
 import GHC.Driver.Monad (Ghc (..), Session (..))
-import Reflex hiding (Query, Response)
+import Reflex hiding (Request, Response)
 
-data Query = Query
-    { uid :: UUID
-    , content :: Text
-    }
+data Request = Evaluate {uid :: UUID, content :: Text}
 
 data Response
     = FullResponse {uid :: UUID, content :: ByteString}
@@ -30,7 +28,7 @@ data Response
     | EndResponse {uid :: UUID}
 
 data Client t = Client
-    { query :: Query -> IO ()
+    { request :: Request -> IO ()
     , onResponse :: Event t Response
     }
 
@@ -43,18 +41,19 @@ client
     => Server t
     -> m (Client t)
 client ghc = do
-    (onQuery, query) <- newTriggerEvent
+    (onRequest, request) <- newTriggerEvent
     (onResponse, respond) <- newTriggerEvent
     performEvent $
-        onQuery <&> \Query{..} -> liftIO $ ghc.input $ do
-            let exec = do
-                    GHC.evaluate content
-                    GHC.evaluate "mapM_ hFlush [stdout, stderr]"
-            let log = forever $ liftIO $ do
-                    content <- hGetSome ghc.output defaultChunkSize
-                    respond PartialResponse{..}
-            raceWithDelay_ 1000 exec log `catch` \error -> liftIO (respond Error{..})
-            liftIO $ respond EndResponse{..}
+        onRequest <&> \case
+            Evaluate{..} -> liftIO $ ghc.input $ do
+                let exec = do
+                        GHC.evaluate content
+                        GHC.evaluate "mapM_ hFlush [stdout, stderr]"
+                let log = forever $ liftIO $ do
+                        content <- hGetSome ghc.output defaultChunkSize
+                        respond PartialResponse{..}
+                raceWithDelay_ 1000 exec log `catch` \error -> liftIO (respond Error{..})
+                liftIO $ respond EndResponse{..}
     pure Client{..}
 
 deriving via (ReaderT Session IO) instance MonadUnliftIO Ghc

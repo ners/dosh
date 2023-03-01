@@ -24,6 +24,7 @@ type CodeZipper = CZ.CodeZipper TokenType
 data Cell = Cell
     { uid :: UUID
     , number :: Int
+    , firstRow :: Int
     , input :: CodeZipper
     , output :: Maybe ByteString
     , error :: Maybe Text
@@ -42,6 +43,7 @@ instance Default Cell where
         Cell
             { uid = UUID.nil
             , number = 0
+            , firstRow = 0
             , input = CZ.empty{CZ.language = "Haskell"}
             , output = Nothing
             , error = Nothing
@@ -49,11 +51,46 @@ instance Default Cell where
             , evaluated = False
             }
 
+lastRow :: Cell -> Int
+lastRow Cell{..} = firstRow + CZ.lines input
+
 data CellEvent
-    = UpdateCellInput (CodeZipper -> CodeZipper)
-    | EvaluateCell Text
+    = UpdateCellInput InputUpdate
+    | UpdateCellCursor CursorMove
+    | EvaluateCell
+    | CheckCell
     | GoToPreviousCell
     | GoToNextCell
+
+data CursorMove
+    = CursorUp Int
+    | CursorDown Int
+    | CursorLeft Int
+    | CursorRight Int
+    | CursorHome
+    | CursorEnd
+    | CursorTop
+    | CursorBottom
+
+moveCursor :: CursorMove -> (CodeZipper -> CodeZipper)
+moveCursor (CursorUp n) = CZ.upN n
+moveCursor (CursorDown n) = CZ.downN n
+moveCursor (CursorLeft n) = CZ.leftN n
+moveCursor (CursorRight n) = CZ.rightN n
+moveCursor CursorHome = CZ.home
+moveCursor CursorEnd = CZ.end
+moveCursor CursorTop = CZ.top
+moveCursor CursorBottom = CZ.bottom
+
+data InputUpdate
+    = DeleteLeft
+    | DeleteRight
+    | Insert Text
+
+updateZipper :: InputUpdate -> (CodeZipper -> CodeZipper)
+updateZipper DeleteLeft = CZ.deleteLeft
+updateZipper DeleteRight = CZ.deleteRight
+updateZipper (Insert t) = CZ.insert t
 
 cell
     :: forall t m
@@ -68,6 +105,7 @@ cell
        , HasTheme t m
        , MonadHold t m
        , MonadIO (Performable m)
+       , MonadIO m
        )
     => Cell
     -> m (Event t CellEvent)
@@ -80,44 +118,50 @@ cell c = do
         vtyInput :: Event t VtyEvent <- Reflex.Vty.input
         dh :: Dynamic t Int <- displayHeight
         let updateZipper = triggerCellEvent . UpdateCellInput
+            updateCursor = triggerCellEvent . UpdateCellCursor
+        liftIO $ forkIO $ do
+            threadDelay 500_000
+            triggerCellEvent CheckCell
         performEvent $
             current dh `attach` vtyInput <&> \(dh, ev) ->
                 liftIO $ case ev of
                     -- Delete character in zipper
-                    V.EvKey V.KBS [] -> updateZipper CZ.deleteLeft
-                    V.EvKey V.KDel [] -> updateZipper CZ.deleteRight
+                    V.EvKey V.KBS [] -> updateZipper DeleteLeft
+                    V.EvKey V.KDel [] -> updateZipper DeleteRight
                     -- Movement in zipper and between cells
                     V.EvKey V.KUp [] ->
                         if null c.input.linesBefore
                             then triggerCellEvent GoToPreviousCell
-                            else updateZipper CZ.up
+                            else updateCursor $ CursorUp 1
                     V.EvKey V.KDown [] ->
                         if null c.input.linesAfter
                             then triggerCellEvent GoToNextCell
-                            else updateZipper CZ.down
-                    V.EvKey V.KLeft [] -> updateZipper CZ.left
-                    V.EvKey V.KRight [] -> updateZipper CZ.right
-                    V.EvKey V.KHome [] -> updateZipper CZ.home
-                    V.EvKey V.KEnd [] -> updateZipper CZ.end
-                    V.EvKey V.KPageUp [] -> updateZipper $ CZ.upN dh
-                    V.EvKey V.KPageDown [] -> updateZipper $ CZ.downN dh
+                            else updateCursor $ CursorDown 1
+                    V.EvKey V.KLeft [] -> updateCursor $ CursorLeft 1
+                    V.EvKey V.KRight [] -> updateCursor $ CursorRight 1
+                    V.EvKey V.KHome [] -> updateCursor CursorHome
+                    V.EvKey V.KEnd [] -> updateCursor CursorEnd
+                    V.EvKey V.KPageUp [] -> updateCursor $ CursorUp dh
+                    V.EvKey V.KPageDown [] -> updateCursor $ CursorDown dh
                     -- Insert characters into zipper
                     V.EvKey (V.KChar '\t') [] -> do
                         -- move to the next multiple of 4
                         let x = CZ.col c.input
                             dx = 4 - mod x 4
-                        updateZipper $ CZ.insert $ Text.replicate dx " "
-                    V.EvKey (V.KChar k) [] -> updateZipper $ CZ.insertChar k
-                    V.EvKey V.KEnter [V.MMeta] -> updateZipper $ CZ.insertChar '\n'
+                        updateZipper $ Insert $ Text.replicate dx " "
+                    V.EvKey (V.KChar k) [] -> updateZipper $ Insert $ Text.singleton k
+                    V.EvKey V.KEnter [V.MMeta] -> updateZipper $ Insert $ Text.singleton '\n'
                     -- Evaluate the cell if it has any input
-                    V.EvKey V.KEnter [] ->
-                        unless (CZ.null $ c.input) $
-                            triggerCellEvent $
-                                EvaluateCell $
-                                    CZ.toText c.input
+                    V.EvKey V.KEnter [] -> triggerCellEvent EvaluateCell
                     _ -> pure ()
     grout (fixed $ pure $ CZ.lines c.input) $ row $ do
         grout (fixed $ pure $ Text.length inPrompt) $ text $ pure inPrompt
+        let w = length (show $ lastRow c)
+        grout (fixed $ pure $ w + 1) $ col $ forM_ [firstRow c .. lastRow c] $ \(succ -> l) ->
+            let t = tshow l
+                pad = w - Text.length t
+                tp = Text.replicate pad " " <> t
+             in grout (fixed $ pure 1) $ dimText $ pure tp
         grout flex $
             codeInput
                 def
@@ -138,8 +182,10 @@ cell c = do
             grout (fixed $ pure $ Text.length errPrompt) $ text $ pure errPrompt
             grout flex $ colorText V.red $ pure err
     blankLine
-    -- grout (fixed $ pure 1) $ row $ text $ current $ tshow <$> codeZipper
     pure cellEvent
 
 colorText :: forall t m. (HasDisplayRegion t m, HasImageWriter t m, HasTheme t m) => V.Color -> Behavior t Text -> m ()
 colorText c = richText RichTextConfig{_richTextConfig_attributes = pure $ V.withForeColor V.currentAttr c}
+
+dimText :: forall t m. (HasDisplayRegion t m, HasImageWriter t m, HasTheme t m) => Behavior t Text -> m ()
+dimText = richText RichTextConfig{_richTextConfig_attributes = pure $ V.withStyle V.currentAttr V.dim}

@@ -48,6 +48,8 @@ initialiseSession = do
             >>> filtered (const GHC.hostIsDynamic) %~ setWay GHC.WayDyn
             >>> unsetExtension GHC.MonomorphismRestriction
             >>> setExtension GHC.IncoherentInstances
+            >>> setExtension GHC.ApplicativeDo
+            >>> setExtension GHC.RecursiveDo
     addImport "Dosh.Prelude"
 
 deriving stock instance Generic (GHC.ImportDecl GHC.GhcPs)

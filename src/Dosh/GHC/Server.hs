@@ -63,6 +63,11 @@ testServer action = do
     threadDelay 1_000
     (,,) <$> getAvailableContents o <*> getAvailableContents e <*> takeMVar errors
 
+withGhc :: Ghc a -> IO (Either SomeException a)
+withGhc action = try $ runGhc (Just GHC.libdir) $ do
+    GHC.initialiseSession
+    action
+
 hCapture :: forall m a. (MonadIO m, MonadMask m) => [(Handle, Handle)] -> m a -> m a
 hCapture handleMap action = go handleMap
   where

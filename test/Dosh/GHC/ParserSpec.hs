@@ -2,21 +2,122 @@
 
 module Dosh.GHC.ParserSpec where
 
+import Data.List (intercalate)
+import Data.List.Extra (nub)
 import Data.Text qualified as Text
 import Dosh.GHC.Parser
+import Dosh.GHC.Server (withGhc)
 import Dosh.Prelude hiding (elements)
+import Dosh.Util
 import Test.Hspec
 import Test.Hspec.Expectations.Extra
 import Test.QuickCheck
 
+data Source
+    = PragmaSource Text Text
+    | ImportSource Text
+    | DeclarationSource Text
+    | ExpressionSource Text Text
+    deriving stock (Generic, Eq)
+
+instance Show Source where
+    show (PragmaSource x y) = Text.unpack $ "{-# " <> x <> " " <> y <> " #-}"
+    show (ImportSource x) = Text.unpack $ "import " <> x
+    show (DeclarationSource x) = Text.unpack x
+    show (ExpressionSource x _) = Text.unpack x
+
+arbitraryPragma :: Gen Source
+arbitraryPragma = PragmaSource "LANGUAGE" <$> elements extensions
+  where
+    extensions :: [Text]
+    extensions = foldr (\e acc -> e : ("No" <> e) : acc) [] ["OverloadedStrings", "OverloadedLabels"]
+
+arbitraryImport :: Gen Source
+arbitraryImport = ImportSource <$> elements ["Data.Default", "Data.Text"]
+
+arbitraryDeclaration :: Gen Source
+arbitraryDeclaration =
+    pure $
+        DeclarationSource $
+            Text.intercalate
+                "\n"
+                [ "square :: Int -> Int"
+                , "square x = x^2"
+                ]
+
+arbitraryExpression :: Gen Source
+arbitraryExpression =
+    uncurry ExpressionSource
+        <$> elements
+            [ ("True", "True\n")
+            ,
+                ( Text.intercalate
+                    "\n"
+                    [ "fromIntegral $"
+                    , "  let x = 1"
+                    , "      y = 2"
+                    , "   in x + y"
+                    ]
+                , "3\n"
+                )
+            , ("putStrLn \"Hello!\"", "Hello!\n")
+            ]
+
+instance Arbitrary Source where
+    arbitrary =
+        oneof
+            [ arbitraryPragma
+            , arbitraryImport
+            , arbitraryDeclaration
+            , arbitraryExpression
+            ]
+
+data SourceChunk
+    = ModuleSourceChunk {srcs :: [Source]}
+    | DeclarationSourceChunk {srcs :: [Source]}
+    | ExpressionSourceChunk {srcs :: [Source]}
+    deriving stock (Eq)
+
+arbitraryModuleChunk :: Gen SourceChunk
+arbitraryModuleChunk = do
+    pragmas <- listOf arbitraryPragma
+    decls <- listOf arbitraryDeclaration
+    pure $ ModuleSourceChunk $ pragmas <> [DeclarationSource "module Foo.Bar where"] <> decls
+
+arbitraryDeclarationChunk :: Gen SourceChunk
+arbitraryDeclarationChunk = do
+    decls <- nub <$> listOf1 arbitraryDeclaration
+    pure $ DeclarationSourceChunk decls
+
+arbitraryExpressionChunk :: Gen SourceChunk
+arbitraryExpressionChunk = do
+    exprs <- listOf1 arbitraryExpression
+    pure $ ExpressionSourceChunk exprs
+
+instance Arbitrary SourceChunk where
+    arbitrary = oneof [{-arbitraryModuleChunk, -} arbitraryDeclarationChunk, arbitraryExpressionChunk]
+
+instance Show SourceChunk where
+    show (ModuleSourceChunk inputs) = intercalate "\n\n" $ show <$> inputs
+    show (DeclarationSourceChunk inputs) = intercalate "\n" $ show <$> inputs
+    show (ExpressionSourceChunk inputs) = intercalate "\n" $ show <$> inputs
+
+newtype SourceCode = SourceCode {chunks :: [SourceChunk]}
+
+instance Show SourceCode where
+    show SourceCode{..} = intercalate "\n\n" $ show <$> chunks
+
+instance Arbitrary SourceCode where
+    arbitrary = SourceCode <$> arbitrary
+
+instance Eq SomeException where
+    a == b = tshow a == tshow b
+
 atLine :: Text -> Int -> Code
 atLine = flip $ locatedText "<test>"
 
-instance IsString Code where
-    fromString = Text.pack >>> (`atLine` 1)
-
-instance Arbitrary Code where
-    arbitrary = fromString <$> listOf (elements "xxx \n")
+instance Arbitrary Text where
+    arbitrary = Text.pack <$> listOf (elements "xxx \n")
 
 startLine :: RealSrcSpan -> Int
 startLine = srcLocLine . realSrcSpanStart
@@ -24,8 +125,8 @@ startLine = srcLocLine . realSrcSpanStart
 endLine :: RealSrcSpan -> Int
 endLine = srcLocLine . realSrcSpanEnd
 
-locate :: Code -> Expectation
-locate (L loc code) = do
+locate :: Text -> Expectation
+locate (flip atLine 1 -> L loc code) = do
     srcSpanFile loc `shouldBe` "<test>"
     srcLocLine start `shouldBe` 1
     srcLocCol start `shouldBe` 1
@@ -36,57 +137,43 @@ locate (L loc code) = do
     end = realSrcSpanEnd loc
     codeLines = Text.splitOn "\n" code
 
-splitAndMergeChunks :: Code -> Expectation
-splitAndMergeChunks c = locatedUnlines (splitChunks c) `shouldBe` c
-
-splitAndMergeExpressions :: Code -> Expectation
-splitAndMergeExpressions c = locatedUnlines (splitExpressions c) `shouldBe` c
-
 shouldStartOnLine :: RealSrcSpan -> Int -> Expectation
 loc `shouldStartOnLine` l = startLine loc `shouldBe` l
 
-chunksAreNotAdjacent :: Code -> Expectation
-chunksAreNotAdjacent c = do
-    let chunks = splitChunks c
-    forM_ (zip chunks $ tail chunks) $ \(L loc1 chunk1, L loc2 _) -> do
+chunksAreNotAdjacent :: Text -> Expectation
+chunksAreNotAdjacent (flip atLine 1 -> c) = do
+    Right chunks <- withGhc $ splitChunks c
+    forM_ (zip chunks $ tail chunks) $ \(L loc1 _, L loc2 _) -> do
         loc2 `shouldStartOnLine` (endLine loc1 + 1)
-        unless (Text.null chunk1) $ chunk1 `shouldEndWithText` "\n"
 
-expressionsAreAdjacent :: Code -> Expectation
-expressionsAreAdjacent c = do
+expressionsAreAdjacent :: Text -> Expectation
+expressionsAreAdjacent (flip atLine 1 -> c) = do
     let exprs = splitExpressions c
     forM_ (zip exprs $ tail exprs) $ \(L loc1 expr1, L loc2 _) -> do
         loc2 `shouldStartOnLine` (endLine loc1 + 1)
         expr1 `shouldNotEndWithText` "\n"
 
-chunksAreNotIndented :: Code -> Expectation
-chunksAreNotIndented c = do
-    let chunks = splitChunks $ locatedUnlines ["x", c]
-    forM_ chunks $ \(L _ chunk) -> chunk `shouldNotStartWithText` " "
+data ChunkType = Module | Declaration | Expression
+    deriving stock (Show, Eq)
 
-expressionsAreNotIndented :: Code -> Expectation
-expressionsAreNotIndented c = do
-    let exprs = splitExpressions $ locatedUnlines ["x", c]
-    forM_ exprs $ \(L _ expr) -> expr `shouldNotStartWithText` " "
+parseChunks :: SourceCode -> Expectation
+parseChunks c@(flip atLine 1 . tshow -> code) = do
+    Right parsedChunks <- withGhc $ splitChunks code
+    length parsedChunks `shouldBe` max 1 (length c.chunks)
+    zipWithM_ compareChunks parsedChunks c.chunks
+  where
+    compareChunks :: CodeChunk -> SourceChunk -> Expectation
+    compareChunks (describeParsed . unLoc -> parsed) (describeSource -> source) = parsed `shouldBe` source
+    describeSource ModuleSourceChunk{} = Module
+    describeSource DeclarationSourceChunk{} = Declaration
+    describeSource ExpressionSourceChunk{} = Expression
+    describeParsed ModuleChunk{} = Module
+    describeParsed DeclarationChunk{} = Declaration
+    describeParsed ExpressionChunk{} = Expression
 
 spec :: Spec
 spec = do
-    it "locates code correctly" $ property locate
-    it "splits and merges chunks correctly" $ property splitAndMergeChunks
-    it "splits and merges expressions correctly" $ property splitAndMergeExpressions
-    it "splits empty text correctly" $ property $ do
-        splitChunks "" `shouldBe` [""]
-    it "splits single line correctly" $ property $ do
-        splitChunks "\n" `shouldBe` ["\n" `atLine` 1]
-        splitChunks "foo" `shouldBe` ["foo" `atLine` 1]
-        splitChunks "foo\n" `shouldBe` ["foo\n" `atLine` 1]
-    it "splits one chunk correctly" $ property $ do
-        splitChunks "foo\nbar" `shouldBe` ["foo\nbar" `atLine` 1]
-        splitChunks "foo\nbar\n" `shouldBe` ["foo\nbar\n" `atLine` 1]
-    it "splits two chunks correctly" $ property $ do
-        splitChunks "\nfoo\nbar" `shouldBe` ["" `atLine` 1, "foo\nbar" `atLine` 2]
-        splitChunks "foo\n\nbar" `shouldBe` ["foo\n" `atLine` 1, "bar" `atLine` 3]
+    it "correctly locates code" $ property locate
     it "does not produce adjacent chunks" $ property chunksAreNotAdjacent
     it "produces adjacent expressions" $ property expressionsAreAdjacent
-    it "does not produce indented chunks" $ property chunksAreNotIndented
-    it "does not produce indented expressions" $ property expressionsAreNotIndented
+    it "correctly parses chunks" $ property parseChunks
