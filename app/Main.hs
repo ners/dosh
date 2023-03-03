@@ -6,6 +6,7 @@ module Main where
 import Dosh.GHC.Client qualified as GHC
 import Dosh.GHC.Server qualified as GHC
 import Dosh.LSP.Client qualified as LSP
+import Dosh.LSP.Document
 import Dosh.LSP.Server qualified as LSP
 import Dosh.Notebook
 import Dosh.Prelude
@@ -20,6 +21,13 @@ main = mainWidget $ do
     lspServer <- LSP.server
     lspClient <- LSP.client lspServer
     initialNotebook <- newNotebook
+    liftIO $
+        lspClient.request
+            LSP.OpenDocument
+                { uid = initialNotebook.uid
+                , language = "haskell"
+                , text = ""
+                }
     initManager_ $ mdo
         dn :: Dynamic t Notebook <- holdDyn initialNotebook u
         u :: Event t Notebook <- networkView (notebook ghcClient lspClient <$> dn) >>= switchHold never

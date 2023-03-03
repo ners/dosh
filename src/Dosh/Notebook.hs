@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
@@ -7,17 +8,22 @@ import Control.Lens
 import Control.Monad.Fix
 import Data.HashMap.Strict (HashMap)
 import Data.List.NonEmpty qualified as NonEmpty
+import Data.Sequence (Seq)
 import Data.Sequence qualified as Seq
 import Data.Sequence.Zipper (SeqZipper (..))
 import Data.Sequence.Zipper qualified as SZ
 import Data.Text.CodeZipper qualified as CZ
+import Data.These (These (..))
 import Data.Traversable (for)
 import Data.UUID (UUID)
+import Data.UUID qualified as UUID
 import Data.UUID.V4 qualified as UUID
 import Dosh.Cell
 import Dosh.Cell qualified as Cell
 import Dosh.GHC.Client qualified as GHC
 import Dosh.LSP.Client qualified as LSP
+import Dosh.LSP.Document (ChunkMetadata, ChunkType (..), Document, newDocument)
+import Dosh.LSP.Document qualified as Document
 import Dosh.Prelude
 import Dosh.Util
 import GHC.Exts (IsList (toList))
@@ -31,8 +37,9 @@ data Notebook = Notebook
     , cellOrder :: SeqZipper UUID
     , nextCellNumber :: Int
     , disabled :: Bool
+    , document :: Document
     }
-    deriving stock (Generic)
+    deriving stock (Generic, Show)
 
 newNotebook :: MonadIO m => m Notebook
 newNotebook = do
@@ -43,6 +50,7 @@ newNotebook = do
         , cellOrder = mempty
         , nextCellNumber = 1
         , disabled = False
+        , document = newDocument $ LSP.Uri $ UUID.toText uid
         }
         & createCell (#disabled .~ False)
 
@@ -58,8 +66,17 @@ createCell' f n =
     n
         & #cells . at c.uid ?~ c
         & #cellOrder %~ (<> SZ.singleton c.uid)
+        & #document . #chunks %~ (<> SZ.singleton chunk)
   where
     c = f def{number = n.nextCellNumber}
+    chunk =
+        Document.ChunkMetadata
+            { cellId = c.uid
+            , chunkIndex = 0
+            , chunkType = Expression
+            , firstLine = c.firstLine
+            , lastLine = c.firstLine
+            }
 
 currentCellUid :: Notebook -> Maybe UUID
 currentCellUid n = SZ.current n.cellOrder
@@ -71,7 +88,7 @@ currentCell :: Notebook -> Maybe Cell
 currentCell n = currentCellUid n >>= \cid -> n ^. #cells . at cid
 
 overCurrentCell :: (Cell -> Cell) -> Notebook -> Notebook
-overCurrentCell f n = flip (maybe n) (currentCellUid n) $ \uid -> overUid uid f n
+overCurrentCell f n = maybe n ((n &) . flip overUid f) (currentCellUid n)
 
 notebook
     :: forall t m
@@ -93,33 +110,32 @@ notebook
     -> Notebook
     -> m (Event t Notebook)
 notebook ghc lsp n = do
-    liftIO $ lsp.request LSP.OpenDocument{uid = n.uid, language = "haskell", text = ""}
     cellEvents :: Event t [(Cell, CellEvent)] <- NonEmpty.toList <$$> (mergeList . GHC.Exts.toList) <$> for n.cellOrder (\cid -> (fromJust $ n.cells ^. at cid,) <$$> cell (fromJust $ n ^. #cells . at cid))
-    cellUpdates :: Event t (Notebook -> Notebook) <- foldr (.) id <$$> performEvent (traverse (uncurry $ handleCellEvent ghc lsp n) <$> cellEvents)
-    let ghcUpdates :: Event t (Notebook -> Notebook)
-        ghcUpdates = (\(id, u) -> #cells . ix id %~ u) . handleGhcResponse <$> ghc.onResponse
-        allUpdates :: Event t (Notebook -> Notebook)
-        allUpdates = mergeWith (.) [cellUpdates, ghcUpdates]
-    pure $ allUpdates <&> ($ n)
+    cellUpdates :: Event t Notebook <- performEvent $ foldrM (uncurry $ handleCellEvent ghc lsp) n <$> cellEvents
+    performEvent $
+        flip (`alignEventWithMaybe` cellUpdates) ghc.onResponse $
+            Just . \case
+                This n -> pure n
+                That r -> handleGhcResponse r n
+                These n r -> handleGhcResponse r n
 
 handleCellEvent
     :: forall t m
      . MonadIO m
     => GHC.Client t
     -> LSP.Client t
-    -> Notebook
     -> Cell
     -> CellEvent
-    -> m (Notebook -> Notebook)
-handleCellEvent _ _ _ Cell{uid} (UpdateCellCursor (moveCursor -> update)) = pure $ #cells . ix uid . #input %~ update
-handleCellEvent _ lsp n Cell{uid, firstRow, input} (UpdateCellInput update) = do
-    let row = fromIntegral $ firstRow + CZ.row input
-        col = fromIntegral $ CZ.col input
-        newZipper = updateZipper update input
-        newRow = fromIntegral $ firstRow + CZ.row newZipper
-        newCol = fromIntegral $ CZ.col newZipper
-        _start = LSP.Position{_line = row, _character = col}
-        _end = LSP.Position{_line = newRow, _character = newCol}
+    -> Notebook
+    -> m Notebook
+handleCellEvent _ _ Cell{uid, firstLine, input} (UpdateCellCursor (moveCursor -> update)) n = do
+    let newZipper = update input
+        newRow = firstLine + CZ.row newZipper
+    pure $
+        n
+            & #cells . ix uid . #input .~ newZipper
+            & #document %~ Document.goToLine newRow
+handleCellEvent _ lsp Cell{uid, firstLine, input} (UpdateCellInput update) n = do
     liftIO $
         lsp.request
             LSP.ChangeDocument
@@ -130,20 +146,39 @@ handleCellEvent _ lsp n Cell{uid, firstRow, input} (UpdateCellInput update) = do
                     _ -> ""
                 }
     pure $
-        #cells . ix uid . #input .~ newZipper
-            >>> filtered (const $ row /= newRow) %~ updateLineNumbers
+        n
+            & #cells . ix uid . #input .~ newZipper
+            & filtered (const $ row /= newRow) %~ updateLineNumbers
+            & #document . #chunks . #after %~ updateChunkLines
   where
+    row = firstLine + CZ.row input
+    col = CZ.col input
+    newZipper = updateZipper update input
+    newRow = firstLine + CZ.row newZipper
+    newCol = CZ.col newZipper
+    _start = LSP.Position{_line = fromIntegral row, _character = fromIntegral col}
+    _end = LSP.Position{_line = fromIntegral newRow, _character = fromIntegral newCol}
+    -- TODO: can we leverage a finger tree to do this automatically?
     updateLineNumbers :: Notebook -> Notebook
     updateLineNumbers n = flip (`foldl'` n) (Seq.zip n.cellOrder.after $ Seq.drop 1 n.cellOrder.after) $
-        \n (c1, c2) -> n & #cells . ix c2 %~ #firstRow .~ lastRow (fromJust $ n ^. #cells . at c1)
-handleCellEvent ghc _ _ c@Cell{uid, input} EvaluateCell = do
+        \n (c1, c2) -> n & #cells . ix c2 %~ #firstLine .~ lastLine (fromJust $ n ^. #cells . at c1)
+    updateChunkLines :: Seq ChunkMetadata -> Seq ChunkMetadata
+    updateChunkLines =
+        overHead (#firstLine %~ min newRow >>> #lastLine %~ (+ (newRow - row)))
+            >>> overTail (#firstLine %~ (+ (newRow - row)) >>> (#lastLine %~ (+ (newRow - row))))
+    overHead :: forall a. (a -> a) -> Seq a -> Seq a
+    overHead = flip Seq.adjust 0
+    overTail :: forall a. (a -> a) -> Seq a -> Seq a
+    overTail = (dropping 1 traverse %~)
+handleCellEvent ghc _ c@Cell{uid, input} EvaluateCell n = do
     let content = CZ.toText input
     liftIO $ ghc.request GHC.Evaluate{uid, content}
     newCellUid <- liftIO UUID.nextRandom
     pure $
-        updateNumbers
-            >>> filtered shouldCreateNewCell %~ createNewCell newCellUid
-            >>> #cells . ix uid %~ \c ->
+        n
+            & updateNumbers
+            & filtered shouldCreateNewCell %~ createNewCell newCellUid
+            & #cells . ix uid %~ \c ->
                 c
                     { output = Nothing
                     , error = Nothing
@@ -160,38 +195,50 @@ handleCellEvent ghc _ _ c@Cell{uid, input} EvaluateCell = do
     shouldCreateNewCell :: Notebook -> Bool
     shouldCreateNewCell n = isLastCell n && cellNotEvaluated n
     createNewCell :: UUID -> Notebook -> Notebook
-    createNewCell uid = createCell' $ #uid .~ uid >>> #firstRow .~ lastRow c
+    createNewCell uid = createCell' $ #uid .~ uid >>> #firstLine .~ lastLine c
     updateNumbers :: Notebook -> Notebook
     updateNumbers n =
         n
             & #cells . traverse . filtered (not . evaluated) . #number %~ (+ 1)
             & #cells . ix uid . #number .~ n.nextCellNumber
             & #nextCellNumber %~ (+ 1)
-handleCellEvent _ _ _ _ GoToPreviousCell = do
-    pure $
-        ifHavePrev $
-            overCurrentCell (#disabled .~ True)
-                >>> #cellOrder %~ SZ.back
-                >>> overCurrentCell (#disabled .~ False)
+handleCellEvent _ _ _ GoToPreviousCell n
+    | havePrev n =
+        pure $
+            n
+                & overCurrentCell (#disabled .~ True)
+                & #cellOrder %~ SZ.back
+                & overCurrentCell (#disabled .~ False)
+                & #document . #chunks %~ SZ.back
+    | otherwise = pure n
   where
     havePrev = not . null . SZ.before . cellOrder
-    ifHavePrev f n = if havePrev n then f n else n
-handleCellEvent _ _ _ c GoToNextCell =
-    pure $
-        ifHaveNext $
-            overCurrentCell (#disabled .~ True)
-                >>> #cellOrder %~ SZ.forward
-                >>> overCurrentCell (#disabled .~ False >>> #firstRow .~ lastRow c)
+handleCellEvent _ _ c GoToNextCell n
+    | haveNext n =
+        pure $
+            n
+                & overCurrentCell (#disabled .~ True)
+                & #cellOrder %~ SZ.forward
+                & overCurrentCell (#disabled .~ False >>> #firstLine .~ lastLine c)
+                & #document . #chunks %~ SZ.forward
+    | otherwise = pure n
   where
     haveNext = isJust . SZ.current . SZ.forward . cellOrder
-    ifHaveNext f n = if haveNext n then f n else n
-handleCellEvent _ lsp _ Cell{uid} CheckCell = do
+handleCellEvent _ lsp Cell{uid} CheckCell n = do
     liftIO $ lsp.request LSP.CheckDocument{uid}
-    pure id
+    pure n
 
-handleGhcResponse :: GHC.Response -> (UUID, Cell -> Cell)
-handleGhcResponse r = (r.uid,) $ case r of
-    GHC.FullResponse{content} -> #output ?~ content
-    GHC.PartialResponse{content} -> #output %~ (Just . (<> content) . fromMaybe "")
-    GHC.Error{error} -> #error ?~ tshow error
-    GHC.EndResponse{} -> #disabled .~ False
+handleGhcResponse
+    :: forall m
+     . MonadIO m
+    => GHC.Response
+    -> Notebook
+    -> m Notebook
+handleGhcResponse r =
+    pure
+        . ( #cells . ix r.uid %~ case r of
+                GHC.FullResponse{content} -> #output ?~ content
+                GHC.PartialResponse{content} -> #output %~ (Just . (<> content) . fromMaybe "")
+                GHC.Error{error} -> #error ?~ tshow error
+                GHC.EndResponse{} -> #disabled .~ False
+          )

@@ -1,6 +1,6 @@
 cabal-version:      3.0
 name:               dosh-prelude
-version:            23.1
+version:            23.3
 synopsis:           The power of Haskell in your terminal!
 homepage:           https://github.com/ners/dosh
 license:            GPL-3.0-or-later

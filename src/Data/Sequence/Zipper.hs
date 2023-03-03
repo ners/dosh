@@ -3,6 +3,8 @@
 module Data.Sequence.Zipper where
 
 import Control.Applicative ((<|>))
+import Data.Foldable (find)
+import Data.Maybe (fromJust)
 import Data.Sequence (Seq, ViewL (..), ViewR (..), (<|), (|>))
 import Data.Sequence qualified as Seq
 import GHC.Exts (IsList (..))
@@ -20,6 +22,9 @@ empty = SeqZipper{before = Seq.empty, after = Seq.empty}
 
 singleton :: t -> SeqZipper t
 singleton x = SeqZipper{before = mempty, after = Seq.singleton x}
+
+length :: SeqZipper t -> Int
+length SeqZipper{..} = Seq.length before + Seq.length after
 
 instance Semigroup (SeqZipper t) where
     a <> b = SeqZipper{before = before a, after = after a <> before b <> after b}
@@ -74,10 +79,22 @@ forward sz@SeqZipper{..} = case Seq.viewl after of
     EmptyL -> sz
     (x :< after) -> sz{before = before |> x, after}
 
+forwardWhile :: (t -> Bool) -> SeqZipper t -> SeqZipper t
+forwardWhile p = fromJust . find (not . maybe False p . current) . iterate forward
+
 back :: SeqZipper t -> SeqZipper t
 back sz@SeqZipper{..} = case Seq.viewr before of
     EmptyR -> sz
     (before :> x) -> sz{before, after = x <| after}
+
+backWhile :: (t -> Bool) -> SeqZipper t -> SeqZipper t
+backWhile p sz = go $ take (1 + Seq.length (before sz)) $ iterate back sz
+  where
+    go [x] = x
+    go (x : y : xs)
+        | maybe True p (current y) = go (y : xs)
+        | otherwise = x
+    go _ = sz
 
 home :: SeqZipper t -> SeqZipper t
 home sz@SeqZipper{..} = sz{before = mempty, after = before <> after}

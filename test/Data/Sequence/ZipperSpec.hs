@@ -3,11 +3,16 @@
 
 module Data.Sequence.ZipperSpec where
 
+import Control.Applicative ((<|>))
+import Control.Monad (unless)
 import Data.List (foldl')
+import Data.Maybe (listToMaybe)
 import Data.Ord (clamp)
-import Data.Sequence.Zipper
+import Data.Sequence qualified as Seq
+import Data.Sequence.Zipper hiding (length)
+import Data.Sequence.Zipper qualified as SZ
 import GHC.Exts (IsList (..))
-import Test.Hspec hiding (before)
+import Test.Hspec hiding (after, before)
 import Test.QuickCheck
 import Prelude
 
@@ -35,35 +40,61 @@ data Move
     | Back
     | Home
     | End
+    | ForwardWhile Predicate
+    | BackWhile Predicate
+    deriving stock (Show, Eq)
+
+data Predicate
+    = NotEqualZero
+    | Even
     deriving stock (Show, Eq, Bounded, Enum)
 
-instance Arbitrary Move where arbitrary = elements [minBound .. maxBound]
+predicate :: Integral t => Predicate -> (t -> Bool)
+predicate NotEqualZero = (/= 0)
+predicate Even = even
+
+instance Arbitrary Move where
+    arbitrary = elements $ Forward : Back : Home : End : ([ForwardWhile, BackWhile] <*> [minBound .. maxBound])
 
 type MoveSequence = [Move]
 
-performMove :: Move -> SeqZipper t -> SeqZipper t
+performMove :: (Integral t) => Move -> SeqZipper t -> SeqZipper t
 performMove Forward = forward
 performMove Back = back
 performMove Home = home
 performMove End = end
+performMove (ForwardWhile (predicate -> p)) = forwardWhile p
+performMove (BackWhile (predicate -> p)) = backWhile p
 
-performMoves :: SeqZipper t -> MoveSequence -> SeqZipper t
+performMoves :: (Integral t) => SeqZipper t -> MoveSequence -> SeqZipper t
 performMoves = foldl' (flip performMove)
 
-unchangedByMovement :: (Eq t, Show t) => SeqZipper t -> MoveSequence -> Expectation
+unchangedByMovement :: (Integral t, Show t) => SeqZipper t -> MoveSequence -> Expectation
 unchangedByMovement zipper moves = performMoves zipper moves `shouldBeEquivalentTo` zipper
 
-itMoves :: Move -> SeqZipper t -> Expectation
-itMoves m zipper = newPosition `shouldBe` expectedNewPosition
+itMoves :: (Integral t, Show t) => Move -> SeqZipper t -> Expectation
+itMoves m zipper = do
+    newPosition `shouldBe` expectedNewPosition
+    case m of
+        Forward -> current newZipper `shouldBe` listToMaybe (drop 1 forwardList)
+        Back -> current newZipper `shouldBe` listToMaybe backwardList <|> current zipper
+        Home -> current newZipper `shouldBe` listToMaybe (toList zipper)
+        End -> current newZipper `shouldBe` Nothing
+        ForwardWhile (predicate -> p) -> current newZipper `shouldSatisfy` maybe True (not . p)
+        BackWhile (predicate -> p) -> unless (null $ before newZipper) $ back newZipper `shouldSatisfy` maybe False (not . p) . current
   where
-    position = length (before zipper)
+    position = Seq.length (before zipper)
     newZipper = performMove m zipper
-    newPosition = length (before newZipper)
-    expectedNewPosition = clamp (0, length zipper) $ case m of
+    newPosition = Seq.length (before newZipper)
+    expectedNewPosition = clamp (0, SZ.length zipper) $ case m of
         Forward -> position + 1
         Back -> position - 1
         Home -> 0
         End -> maxBound
+        ForwardWhile (predicate -> p) -> position + length (takeWhile p forwardList)
+        BackWhile (predicate -> p) -> position - length (takeWhile p backwardList)
+    forwardList = toList $ after zipper
+    backwardList = reverse $ toList $ before zipper
 
 spec :: Spec
 spec = do

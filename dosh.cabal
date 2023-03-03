@@ -1,6 +1,6 @@
 cabal-version:      3.0
 name:               dosh
-version:            23.1
+version:            23.3
 synopsis:           The power of Haskell in your terminal!
 homepage:           https://github.com/ners/dosh
 license:            GPL-3.0-or-later
@@ -13,7 +13,7 @@ build-type:         Simple
 common common
     default-language: GHC2021
     ghc-options:
-        -O2
+        -O0
         -j
         -Weverything
         -Wno-unsafe
@@ -46,15 +46,17 @@ library
     import:           common
     hs-source-dirs:   src
     exposed-modules:
-        Data.Text.CodeZipper,
         Data.Sequence.Zipper,
+        Data.Text.CodeZipper,
         Dosh.Cell,
         Dosh.GHC.Client,
         Dosh.GHC.Evaluator,
+        Dosh.GHC.Lexer,
         Dosh.GHC.Parser,
         Dosh.GHC.Server,
         Dosh.GHC.Session,
         Dosh.LSP.Client,
+        Dosh.LSP.Document,
         Dosh.LSP.Server,
         Dosh.Notebook,
         Dosh.Util
@@ -83,6 +85,7 @@ library
         skylighting-core,
         template-haskell,
         text,
+        these,
         unordered-containers,
         uuid,
         vty
@@ -111,6 +114,7 @@ test-suite dosh-test
     build-depends:
         QuickCheck,
         base,
+        containers,
         dosh,
         extra,
         ghcide,
@@ -118,9 +122,10 @@ test-suite dosh-test
         quickcheck-text,
         text
     other-modules:
-        Dosh.GHC.ParserSpec,
-        Dosh.GHC.EvaluatorSpec,
         Data.Sequence.ZipperSpec,
         Data.Text.CodeZipperSpec,
+        Dosh.GHC.EvaluatorSpec,
+        Dosh.GHC.LexerSpec,
+        Dosh.GHC.ParserSpec,
         Test.Hspec.Expectations.Extra,
     build-tools-depends: hspec-discover:hspec-discover

@@ -24,7 +24,7 @@ type CodeZipper = CZ.CodeZipper TokenType
 data Cell = Cell
     { uid :: UUID
     , number :: Int
-    , firstRow :: Int
+    , firstLine :: Int
     , input :: CodeZipper
     , output :: Maybe ByteString
     , error :: Maybe Text
@@ -43,7 +43,7 @@ instance Default Cell where
         Cell
             { uid = UUID.nil
             , number = 0
-            , firstRow = 0
+            , firstLine = 0
             , input = CZ.empty{CZ.language = "Haskell"}
             , output = Nothing
             , error = Nothing
@@ -51,8 +51,8 @@ instance Default Cell where
             , evaluated = False
             }
 
-lastRow :: Cell -> Int
-lastRow Cell{..} = firstRow + CZ.lines input
+lastLine :: Cell -> Int
+lastLine Cell{..} = firstLine + CZ.lines input
 
 data CellEvent
     = UpdateCellInput InputUpdate
@@ -156,8 +156,8 @@ cell c = do
                     _ -> pure ()
     grout (fixed $ pure $ CZ.lines c.input) $ row $ do
         grout (fixed $ pure $ Text.length inPrompt) $ text $ pure inPrompt
-        let w = length (show $ lastRow c)
-        grout (fixed $ pure $ w + 1) $ col $ forM_ [firstRow c .. lastRow c] $ \(succ -> l) ->
+        let w = length (show $ lastLine c)
+        grout (fixed $ pure $ w + 1) $ col $ forM_ [firstLine c .. lastLine c] $ \l ->
             let t = tshow l
                 pad = w - Text.length t
                 tp = Text.replicate pad " " <> t
