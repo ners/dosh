@@ -47,6 +47,7 @@
               ({
                 dosh-prelude = self.callCabal2nix pname ./dosh-prelude { };
                 dosh = self.callCabal2nix pname src { };
+                lsp-client = self.callCabal2nix pname ./lsp-client { };
                 reflex-process = doJailbreak super.reflex-process;
                 reflex-vty = self.callCabal2nix "reflex-vty" inputs.reflex-vty { };
                 haskell-language-server = lib.pipe super.haskell-language-server [

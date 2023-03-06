@@ -1,0 +1,22 @@
+cabal-version:      3.0
+name:               lsp-client
+version:            0.0.1
+synopsis:           Haskell library for Language Server Protocol clients
+homepage:           https://github.com/ners/dosh
+license:            GPL-3.0-or-later
+license-file:       LICENCE
+author:             ners
+maintainer:         ners@gmx.ch
+category:           System
+build-type:         Simple
+
+library
+    build-depends:
+        aeson,
+        base,
+        bytestring,
+        lens,
+        lsp-types,
+        mtl,
+        text,
+        unordered-containers
