@@ -1,34 +1,49 @@
 module Language.LSP.Client where
 
-data SessionState = SessionState
-    { sendingQueue :: [Message] -- Probably not needed
-    , requestsWaitingForResponse :: Map (LspId, LspRequest) (LspRequest -> LspResponse -> IO ())
-    , lastDiagnostics :: Maybe [Diagnostics]
-    }
+import Control.Lens
+import Language.LSP.Types
+import System.IO (Handle)
+import Prelude
 
+-- data SessionState = SessionState
+--    { sendingQueue :: [Message] -- Probably not needed
+--    , requestsWaitingForResponse :: Map (LspId, LspRequest) (LspRequest -> LspResponse -> IO ())
+--    , lastDiagnostics :: Maybe [Diagnostics]
+--    }
+--
 class HasDiagnostics a where
-    diagnostics :: Lens' a (Maybe [Diagnostics])
+    diagnostics :: Lens' a (Maybe [Diagnostic])
 
+--
 type Session = IO
 
-runSession :: Session a -> IO a
-runSession = runSessionWithHandles stdin stdout
+--
+-- runSession :: Session a -> IO a
+-- runSession = runSessionWithHandles stdin stdout
 
 runSessionWithHandles :: Handle -> Handle -> Session a -> IO a
-runSessionWithHandles input output action = race action $ forever $ do
-    serverMessage <- fromJson <$> hGetLine input
-    if isDiagnostics serverMessage
-        then --update state to save lastDiagnostics
-        else pure ()
+runSessionWithHandles input output action = undefined
 
-sendRequest :: LspRequest -> (LspRequest -> LspResponse -> IO ()) -> Session LspId
-sendRequest request callback = undefined
+-- runSessionWithHandles input output action = race action $ forever $ do
+--    serverMessage <- fromJson <$> hGetLine input
+--    if isDiagnostics serverMessage
+--        then pure () -- update state to save lastDiagnostics
+--        else pure ()
+--
+sendRequest
+    :: SClientMethod m
+    -> MessageParams m
+    -> (LspId m -> ResponseMessage m -> IO ())
+    -> Session (LspId m)
+sendRequest method params callback = undefined
 
-sendNotification :: LspNotification -> Session ()
-sendNotification notification = undefined
-
-getDiagnostics :: HasDiagnostics m => m [Diagnostics]
+--
+-- sendNotification :: LspNotification -> Session ()
+-- sendNotification notification = undefined
+--
+getDiagnostics :: Session [Diagnostic]
 getDiagnostics = undefined
 
-getDocumentContents :: Uri -> Session Text
-getDocumentContents uri = undefined
+--
+-- getDocumentContents :: Uri -> Session Text
+-- getDocumentContents uri = undefined

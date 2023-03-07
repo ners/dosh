@@ -40,7 +40,9 @@ common common
         TypeFamilies
         ViewPatterns
     build-depends:
-        base
+        base,
+        lsp-types,
+        unliftio,
 
 library
     import:           common
@@ -50,10 +52,8 @@ library
         bytestring,
         generic-lens,
         lens,
-        lsp-types,
         mtl,
         text,
-        unliftio,
         unliftio-core,
     exposed-modules:
         Language.LSP.Client
@@ -68,5 +68,6 @@ test-suite spec
         QuickCheck,
         hspec,
         lsp-client,
+        process,
     other-modules:
         Language.LSP.ClientSpec

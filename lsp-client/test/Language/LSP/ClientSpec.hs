@@ -1,10 +1,23 @@
 module Language.LSP.ClientSpec where
 
+import Control.Monad
 import Language.LSP.Client
-import System.IO (Handle)
+import Language.LSP.Types
+import System.IO
+import System.Process (createPipe)
 import Test.Hspec
-import Test.QuickCheck
 import Prelude
+import Control.Arrow ((>>>))
+import UnliftIO (race, MonadUnliftIO, fromEither)
+import UnliftIO.Concurrent
+import Control.Exception
+
+withTimeout :: forall m a. MonadUnliftIO m => Int -> m a -> m a
+withTimeout delay a = fromEither =<< race timeout a
+    where
+        timeout = do
+            threadDelay delay
+            pure $ AssertionFailed "Timeout exceeded"
 
 -- | LSP server that does not read input, and sends dummy diagnostics once per second
 diagServer :: IO (Handle, Handle)
@@ -13,7 +26,7 @@ diagServer = do
     (outRead, outWrite) <- createPipe
     forkIO $ forM_ [1 ..] $ \i -> do
         threadDelay 1_000_000
-        hPutLine outWrite $ "server diagnostics message " <> show i
+        hPutStrLn outWrite $ "server diagnostics message " <> show i
     pure (inWrite, outRead)
 
 -- | LSP server that accepts requests and answers them with a delay
@@ -24,44 +37,47 @@ reqServer = do
     forkIO $ forever $ do
         req <- hGetLine inRead
         let response = "req id ..."
-        forkIO $ threadDelay 100_000 $ hPutLine outWrite response
+        forkIO $ threadDelay 100_000 >> hPutStrLn outWrite response
     pure (inWrite, outRead)
 
 -- | LSP client that waits for queries
-client :: Handle -> Handle -> IO (Session a -> IO ())
+client :: Handle -> Handle -> IO (Session () -> IO ())
 client input output = do
     i <- newEmptyMVar
     o <- newEmptyMVar
     forkIO $ runSessionWithHandles input output $ forever $ do
         a <- takeMVar i
-        join a >>= putMVar o
+        a >>= putMVar o
     pure $ putMVar i >>> (*> readMVar o)
 
 spec :: Spec
 spec = do
     it "concurrently handles actions and server messages" $ do
-        (input, output) <- diagServer
-        input <- client input output
+        input <- reqServer >>= uncurry client
         threadDelay 1_000_000
         input $ do
             d <- withTimeout 1_000_000 getDiagnostics
-            d `shouldBe` "server diagnostics message n"
+            d `shouldBe` [] --server diagnostics message n
         threadDelay 1_000_000
         input $ do
             d <- withTimeout 1_000_000 getDiagnostics
-            d `shouldBe` "server diagnostics message >n"
+            d `shouldBe` [] --server diagnostics message >n
     it "answers requests correctly" $ do
-        (input, output) <- reqServer
-        input <- client input output
-        req1 <- newEmptyMVar
-        input $ sendRequest "request 1" $ \req resp -> do
-            id req `shouldBe` id resp
-            putMVar req1 ()
-        -- atomically test these two together
-        -- req1 is not yet full ...
-        req2 <- newEmptyMVar
-        input $ sendRequest "request 2" $ \req resp -> do
-            id req `shouldBe` id resp
-            putMVar req2 ()
-
--- req2 is not yet full ...
+        input <- reqServer >>= uncurry client
+        req1Done <- newEmptyMVar
+        req1Id <- newEmptyMVar
+        input $ do
+            sendRequest SShutdown Empty (\reqId _ -> do
+                (reqId `shouldBe`) =<< takeMVar req1Id
+                putMVar req1Done ()) >>= putMVar req1Id
+        req2Done <- newEmptyMVar
+        req2Id <- newEmptyMVar
+        input $ do
+            sendRequest SShutdown Empty (\reqId _ -> do
+                (reqId `shouldBe`) =<< takeMVar req2Id
+                putMVar req2Done ()) >>= putMVar req2Id
+        tryTakeMVar req1Done `shouldReturn` Nothing
+        tryTakeMVar req2Done `shouldReturn` Nothing
+        threadDelay 1_100_000
+        tryTakeMVar req1Done `shouldReturn` Just ()
+        tryTakeMVar req2Done `shouldReturn` Just ()
