@@ -1,8 +1,16 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
+
 module Language.LSP.Client where
 
 import Control.Lens
+import Control.Monad (forever)
+import Data.Aeson (decode)
+import Data.ByteString (fromStrict, hGetLine)
+import Data.Either (fromRight)
+import Data.Maybe (fromJust)
 import Language.LSP.Types
 import System.IO (Handle)
+import UnliftIO (race)
 import Prelude
 
 -- data SessionState = SessionState
@@ -17,19 +25,21 @@ class HasDiagnostics a where
 --
 type Session = IO
 
+data ServerResponse
+
 --
 -- runSession :: Session a -> IO a
 -- runSession = runSessionWithHandles stdin stdout
 
 runSessionWithHandles :: Handle -> Handle -> Session a -> IO a
-runSessionWithHandles input output action = undefined
+runSessionWithHandles input output action = do
+    actionResult <- race action $ forever $ do
+        serverMessage <- fromJust . decode . fromStrict <$> hGetLine input
+        if isDiagnostics serverMessage
+            then pure () -- update state to save lastDiagnostics
+            else pure ()
+    pure $ fromRight undefined actionResult
 
--- runSessionWithHandles input output action = race action $ forever $ do
---    serverMessage <- fromJson <$> hGetLine input
---    if isDiagnostics serverMessage
---        then pure () -- update state to save lastDiagnostics
---        else pure ()
---
 sendRequest
     :: SClientMethod m
     -> MessageParams m
@@ -47,3 +57,6 @@ getDiagnostics = undefined
 --
 -- getDocumentContents :: Uri -> Session Text
 -- getDocumentContents uri = undefined
+
+isDiagnostics :: ServerMessage m -> Bool
+isDiagnostics = undefined
