@@ -1,5 +1,37 @@
 {
   "nodes": {
+    "conduit": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1677944942,
+        "narHash": "sha256-L8mtP3b+5/Hv4PkjQV+iUurhjsrdoUP5gVJ5oVN+AEs=",
+        "owner": "ners",
+        "repo": "conduit",
+        "rev": "8496785be6eb2cf8e30cf437b1fbe569cfbd1fd1",
+        "type": "github"
+      },
+      "original": {
+        "owner": "ners",
+        "repo": "conduit",
+        "type": "github"
+      }
+    },
+    "conduit-parse": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1677942889,
+        "narHash": "sha256-Lh5+5u5YiMsS+ymVAmeK09N//RUSBmRTl1qy9VdzWdo=",
+        "owner": "ners",
+        "repo": "conduit-parse",
+        "rev": "93bd0b2db856d9900e029c72ed5e4bf1990b6ac6",
+        "type": "github"
+      },
+      "original": {
+        "owner": "ners",
+        "repo": "conduit-parse",
+        "type": "github"
+      }
+    },
     "flake-compat": {
       "flake": false,
       "locked": {
@@ -81,6 +113,8 @@
     },
     "root": {
       "inputs": {
+        "conduit": "conduit",
+        "conduit-parse": "conduit-parse",
         "flake-compat": "flake-compat",
         "flake-utils": "flake-utils",
         "nix-filter": "nix-filter",

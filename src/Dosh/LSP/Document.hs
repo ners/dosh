@@ -2,7 +2,7 @@ module Dosh.LSP.Document where
 
 import Data.Sequence.Zipper (SeqZipper, backWhile, forwardWhile)
 import Data.UUID (UUID)
-import Development.IDE (Uri)
+import Development.IDE (Diagnostic, Uri)
 import Dosh.Prelude
 
 data ChunkType = Module | Declaration | Expression
@@ -20,11 +20,21 @@ data ChunkMetadata = ChunkMetadata
 data Document = Document
     { uri :: Uri
     , chunks :: SeqZipper ChunkMetadata
+    , contents :: Text
+    , diagnostics :: [Diagnostic]
+    , error :: Text
     }
     deriving stock (Generic, Show)
 
 newDocument :: Uri -> Document
-newDocument uri = Document{chunks = mempty, ..}
+newDocument uri =
+    Document
+        { uri
+        , chunks = mempty
+        , contents = mempty
+        , diagnostics = mempty
+        , error = mempty
+        }
 
 goToLine :: Int -> Document -> Document
 goToLine r doc = doc{chunks = (lowerBound . upperBound) doc.chunks}

@@ -2,8 +2,8 @@ module Dosh.GHC.Evaluator where
 
 import Data.Text qualified as Text
 import Development.IDE.GHC.Compat.Core (GhcMonad)
-import Dosh.GHC.Parser
 import Dosh.GHC.Lexer
+import Dosh.GHC.Parser
 import Dosh.Prelude hiding (mod)
 import GHC (execOptions, execStmt, runParsedDecls)
 
@@ -13,6 +13,7 @@ evaluate (chunkFromText "<interactive>" 1 -> chunk) = do
 
 evaluateChunk :: GhcMonad m => ParsedChunk -> m ()
 evaluateChunk (ExpressionChunk exprs) =
+    -- TODO: evaluate in single-step mode instead of all at once
     forM_ exprs $ \e -> execStmt (Text.unpack $ unLoc e) execOptions
 evaluateChunk (DeclarationChunk decls) =
     void $ runParsedDecls decls

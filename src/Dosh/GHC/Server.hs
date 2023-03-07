@@ -2,8 +2,9 @@
 
 module Dosh.GHC.Server where
 
+import Control.Monad.Catch (MonadMask, bracket, catch)
 import Dosh.GHC.Session qualified as GHC
-import Dosh.Prelude
+import Dosh.Prelude hiding (bracket, catch)
 import Dosh.Util
 import GHC (Ghc, runGhc)
 import GHC.IO.Handle (hDuplicate, hDuplicateTo)

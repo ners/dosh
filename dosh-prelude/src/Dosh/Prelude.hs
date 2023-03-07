@@ -4,7 +4,6 @@ module Dosh.Prelude
     , module Control.Arrow
     , module Control.Lens
     , module Control.Monad
-    , module Control.Monad.Catch
     , module Control.Monad.IO.Unlift
     , module Data.ByteString
     , module Data.ByteString.Lazy
@@ -21,6 +20,7 @@ module Dosh.Prelude
     , module System.IO
     , module UnliftIO.Async
     , module UnliftIO.Concurrent
+    , module UnliftIO.Exception
     , module UnliftIO.Timeout
     )
 where
@@ -29,7 +29,6 @@ import Control.Applicative
 import Control.Arrow
 import Control.Lens
 import Control.Monad
-import Control.Monad.Catch
 import Control.Monad.IO.Unlift
 import Data.ByteString (ByteString)
 import Data.ByteString.Lazy (LazyByteString)
@@ -46,4 +45,5 @@ import GHC.Generics (Generic)
 import System.IO
 import UnliftIO.Async
 import UnliftIO.Concurrent
+import UnliftIO.Exception
 import UnliftIO.Timeout

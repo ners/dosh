@@ -1,5 +1,11 @@
 module Language.LSP.ClientSpec where
 
+import Language.LSP.Client
+import System.IO (Handle)
+import Test.Hspec
+import Test.QuickCheck
+import Prelude
+
 -- | LSP server that does not read input, and sends dummy diagnostics once per second
 diagServer :: IO (Handle, Handle)
 diagServer = do

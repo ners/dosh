@@ -1,3 +1,6 @@
+{-# LANGUAGE LambdaCase #-}
+{-# OPTIONS_GHC -Wno-name-shadowing #-}
+
 module Dosh.Util where
 
 import Control.Monad.Extra (whenMaybeM, whileJustM)
@@ -7,6 +10,7 @@ import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
+import Data.These (These (..))
 import Dosh.Prelude
 import Graphics.Vty (Key (..), Modifier (..))
 import Reflex

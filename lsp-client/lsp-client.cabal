@@ -10,13 +10,63 @@ maintainer:         ners@gmx.ch
 category:           System
 build-type:         Simple
 
+common common
+    default-language: GHC2021
+    ghc-options:
+        -O0
+        -j
+        -Weverything
+        -Wno-unsafe
+        -Wno-missing-safe-haskell-mode
+        -Wno-missing-export-lists
+        -Wno-missing-import-lists
+        -Wno-missing-kind-signatures
+        -Wno-all-missed-specialisations
+    default-extensions:
+        ApplicativeDo
+        DataKinds
+        DefaultSignatures
+        DeriveAnyClass
+        DeriveGeneric
+        DerivingStrategies
+        DerivingVia
+        ExplicitNamespaces
+        NoImplicitPrelude
+        OverloadedLabels
+        OverloadedRecordDot
+        OverloadedStrings
+        RecordWildCards
+        RecursiveDo
+        TypeFamilies
+        ViewPatterns
+    build-depends:
+        base
+
 library
+    import:           common
+    hs-source-dirs:   src
     build-depends:
         aeson,
-        base,
         bytestring,
+        generic-lens,
         lens,
         lsp-types,
         mtl,
         text,
-        unordered-containers
+        unliftio,
+        unliftio-core,
+    exposed-modules:
+        Language.LSP.Client
+
+test-suite spec
+    import:           common
+    ghc-options:      -threaded
+    type:             exitcode-stdio-1.0
+    hs-source-dirs:   test
+    main-is:          Spec.hs
+    build-depends:
+        QuickCheck,
+        hspec,
+        lsp-client,
+    other-modules:
+        Language.LSP.ClientSpec

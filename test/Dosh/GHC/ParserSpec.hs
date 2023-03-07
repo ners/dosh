@@ -5,6 +5,8 @@ module Dosh.GHC.ParserSpec where
 import Data.List (intercalate)
 import Data.List.Extra (nub)
 import Data.Text qualified as Text
+import Dosh.GHC.Lexer
+import Dosh.GHC.LexerSpec
 import Dosh.GHC.Parser
 import Dosh.GHC.Server (withGhc)
 import Dosh.LSP.Document (ChunkType (..))
@@ -12,8 +14,6 @@ import Dosh.Prelude hiding (elements)
 import Dosh.Util
 import Test.Hspec
 import Test.QuickCheck
-import Dosh.GHC.Lexer
-import Dosh.GHC.LexerSpec
 
 data Source
     = PragmaSource Text Text

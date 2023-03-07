@@ -58,7 +58,6 @@ data CellEvent
     = UpdateCellInput InputUpdate
     | UpdateCellCursor CursorMove
     | EvaluateCell
-    | CheckCell
     | GoToPreviousCell
     | GoToNextCell
 
@@ -105,7 +104,6 @@ cell
        , HasTheme t m
        , MonadHold t m
        , MonadIO (Performable m)
-       , MonadIO m
        )
     => Cell
     -> m (Event t CellEvent)
@@ -119,9 +117,6 @@ cell c = do
         dh :: Dynamic t Int <- displayHeight
         let updateZipper = triggerCellEvent . UpdateCellInput
             updateCursor = triggerCellEvent . UpdateCellCursor
-        liftIO $ forkIO $ do
-            threadDelay 500_000
-            triggerCellEvent CheckCell
         performEvent $
             current dh `attach` vtyInput <&> \(dh, ev) ->
                 liftIO $ case ev of

@@ -65,14 +65,18 @@ library
     build-depends:
         base,
         bytestring,
+        conduit,
+        conduit-parse,
         containers,
         data-default,
+        exceptions,
         extra,
         generic-lens,
         ghc,
         ghc-paths,
         ghc-syntax-highlighter,
         ghcide,
+        haskell-language-server,
         hls-plugin-api,
         lens,
         lsp-test,
@@ -86,6 +90,7 @@ library
         template-haskell,
         text,
         these,
+        transformers,
         unordered-containers,
         uuid,
         vty
@@ -103,7 +108,8 @@ executable dosh
     build-depends:
         dosh,
         reflex,
-        reflex-vty
+        reflex-vty,
+        text
 
 test-suite dosh-test
     import:           common

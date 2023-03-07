@@ -33,7 +33,6 @@ library
         base,
         bytestring,
         data-default,
-        exceptions,
         generic-lens,
         lens,
         sixel,
