@@ -8,6 +8,7 @@ import Data.Algorithm.DiffOutput
 import qualified Data.ByteString.Lazy.Char8 as B
 import Data.List
 import Language.LSP.Types
+import Prelude
 
 -- | An exception that can be thrown during a 'Language.LSP.Client.Session'
 data SessionException

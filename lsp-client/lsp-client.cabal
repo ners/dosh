@@ -41,8 +41,10 @@ common common
         ViewPatterns
     build-depends:
         aeson,
+        aeson-pretty,
         base,
         bytestring,
+        Diff,
         lsp-types,
         text,
         unliftio,
@@ -57,6 +59,7 @@ library
         unordered-containers,
     exposed-modules:
         Language.LSP.Client
+        Language.LSP.Client.Decoding
 
 test-suite spec
     import:           common
