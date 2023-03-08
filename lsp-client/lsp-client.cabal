@@ -58,8 +58,9 @@ library
         mtl,
         unordered-containers,
     exposed-modules:
-        Language.LSP.Client
-        Language.LSP.Client.Decoding
+        Language.LSP.Client,
+        Language.LSP.Client.Decoding,
+        Language.LSP.Client.Exceptions
 
 test-suite spec
     import:           common

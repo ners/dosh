@@ -10,7 +10,7 @@ import Control.Exception
 import Control.Lens
 import Data.Aeson
 import Data.Aeson.Types
-import qualified Data.ByteString.Lazy.Char8 as B
+import Data.ByteString.Lazy.Char8 qualified as B
 import Data.Foldable
 import Data.Functor.Const
 import Data.Functor.Product
