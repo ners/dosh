@@ -4,12 +4,10 @@ module Language.LSP.Client where
 
 import Control.Lens
 import Control.Monad (forever)
-import Control.Monad.RWS (MonadReader (ask))
-import Control.Monad.Reader (ReaderT, ask, runReaderT)
-import Data.Aeson (decode)
-import Data.Either (fromRight)
-import Data.Maybe (fromJust)
-import GHC.Conc (writeTVar)
+import Control.Monad.Reader (ReaderT, asks, runReaderT)
+import Data.ByteString.Lazy (LazyByteString)
+import Data.ByteString.Lazy qualified as LazyByteString
+import Data.Either (fromLeft)
 import Language.LSP.Client.Decoding
     ( RequestMap
     , decodeFromServerMsg
@@ -17,32 +15,30 @@ import Language.LSP.Client.Decoding
     , newRequestMap
     )
 import Language.LSP.Types
-import Language.LSP.Types (FromClientMessage' (FromClientRsp), FromServerMessage, FromServerMessage' (FromServerMess))
 import System.IO (Handle, stdin, stdout)
-import UnliftIO (liftIO, race)
+import UnliftIO (MonadUnliftIO, concurrently_, liftIO, race)
 import UnliftIO.STM
 import Prelude
 
 data SessionState = SessionState
-    { sendingQueue :: ()
-    , -- [Message] -- Probably not needed
-      pendingRequests :: RequestMap
-    , -- Map (LspId, LspRequest) (LspRequest -> LspResponse -> IO ())
-      lastDiagnostics :: Maybe [Diagnostic]
+    { pendingRequests :: TVar RequestMap
+    , lastDiagnostics :: TVar [Diagnostic]
+    , incoming :: TQueue LazyByteString
+    , outgoing :: TQueue LazyByteString
     }
 
-defaultSessionState :: SessionState
-defaultSessionState =
-    SessionState
-        { sendingQueue = ()
-        , pendingRequests = newRequestMap
-        , lastDiagnostics = Nothing
-        }
+defaultSessionState :: MonadUnliftIO m => m SessionState
+defaultSessionState = do
+    pendingRequests <- newTVarIO newRequestMap
+    lastDiagnostics <- newTVarIO []
+    outgoing <- newTQueueIO
+    incoming <- newTQueueIO
+    pure SessionState{..}
 
 class HasDiagnostics a where
     diagnostics :: Lens' a (Maybe [Diagnostic])
 
-type Session = ReaderT (TVar SessionState) IO
+type Session = ReaderT SessionState IO
 
 data ServerResponse
 
@@ -51,18 +47,27 @@ runSession = runSessionWithHandles stdin stdout
 
 runSessionWithHandles :: Handle -> Handle -> Session a -> IO a
 runSessionWithHandles input output action = do
-    initialState <- newTVarIO defaultSessionState
+    initialState <- defaultSessionState
     flip runReaderT initialState $ do
-        actionResult <- race action $ forever $ do
-            serverBytes <- liftIO $ getNextMessage input
-            sessionState <- ask >>= readTVarIO
-            let (requestMap, serverMessage) = decodeFromServerMsg (pendingRequests sessionState) serverBytes
-            let newState = sessionState{pendingRequests = requestMap}
-            ask >>= (atomically . flip writeTVar newState)
-            case serverMessage of
-                FromServerMess _ _ -> pure () -- if diagnostics, update state
-                FromServerRsp _ _ -> pure () -- assign response to request
-        pure $ fromRight undefined actionResult
+        actionResult <- race action $ do
+            let send =
+                    asks outgoing
+                        >>= atomically . readTQueue
+                        >>= liftIO . LazyByteString.hPut output
+            let receive = do
+                    serverBytes <- liftIO $ getNextMessage input
+                    asks incoming >>= atomically . (`writeTQueue` serverBytes)
+                    pendingRequests <- asks pendingRequests
+                    serverMessage <- atomically $ do
+                        requestMap <- readTVar pendingRequests
+                        let (requestMap', serverMessage) = decodeFromServerMsg requestMap serverBytes
+                        writeTVar pendingRequests requestMap'
+                        pure serverMessage
+                    case serverMessage of
+                        FromServerMess _ _ -> pure () -- if diagnostics, update state
+                        FromServerRsp _ _ -> pure () -- assign response to request
+            concurrently_ (forever send) (forever receive)
+        pure $ fromLeft undefined actionResult
 
 sendRequest
     :: SClientMethod m
