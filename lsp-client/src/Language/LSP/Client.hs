@@ -59,9 +59,9 @@ runSessionWithHandles input output action = do
             let (requestMap, serverMessage) = decodeFromServerMsg (pendingRequests sessionState) serverBytes
             let newState = sessionState{pendingRequests = requestMap}
             ask >>= (atomically . flip writeTVar newState)
-            if isDiagnostics serverMessage
-                then pure () -- update state to save lastDiagnostics
-                else pure ()
+            case serverMessage of
+                FromServerMess _ _ -> pure () -- if diagnostics, update state
+                FromServerRsp _ _ -> pure () -- assign response to request
         pure $ fromRight undefined actionResult
 
 sendRequest
@@ -81,7 +81,3 @@ getDiagnostics = undefined
 --
 -- getDocumentContents :: Uri -> Session Text
 -- getDocumentContents uri = undefined
-
-isDiagnostics :: FromServerMessage -> Bool
-isDiagnostics (FromServerRsp _ _) = False
-isDiagnostics (FromServerMess _ _) = True
