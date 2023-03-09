@@ -1,13 +1,17 @@
 module Language.LSP.Client.Exceptions where
 
-import Control.Exception
-import Data.Aeson
-import Data.Aeson.Encode.Pretty
-import Data.Algorithm.Diff
-import Data.Algorithm.DiffOutput
-import qualified Data.ByteString.Lazy.Char8 as B
-import Data.List
+import Control.Exception (Exception)
+import Data.Aeson (Value, encode)
+import Data.Aeson.Encode.Pretty (encodePretty)
+import Data.Algorithm.Diff (getGroupedDiff)
+import Data.Algorithm.DiffOutput (ppDiff)
+import Data.ByteString.Lazy.Char8 qualified as LazyByteString
+import Data.List (nub)
 import Language.LSP.Types
+    ( FromServerMessage
+    , ResponseError
+    , SomeLspId
+    )
 import Prelude
 
 -- | An exception that can be thrown during a 'Language.LSP.Client.Session'
@@ -22,7 +26,7 @@ data SessionException
     | UnexpectedServerTermination
     | IllegalInitSequenceMessage FromServerMessage
     | MessageSendError Value IOError
-    deriving (Eq)
+    deriving stock (Eq)
 
 instance Exception SessionException
 
@@ -30,7 +34,7 @@ instance Show SessionException where
     show (Timeout lastMsg) =
         "Timed out waiting to receive a message from the server."
             ++ case lastMsg of
-                Just msg -> "\nLast message received:\n" ++ B.unpack (encodePretty msg)
+                Just msg -> "\nLast message received:\n" ++ LazyByteString.unpack (encodePretty msg)
                 Nothing -> mempty
     show NoContentLengthHeader = "Couldn't read Content-Length header from the server."
     show (UnexpectedMessage expected lastMsg) =
@@ -39,22 +43,23 @@ instance Show SessionException where
             ++ expected
             ++ "\n"
             ++ "But the last message received was:\n"
-            ++ B.unpack (encodePretty lastMsg)
+            ++ LazyByteString.unpack (encodePretty lastMsg)
     show (ReplayOutOfOrder received expected) =
         let expected' = nub expected
-            getJsonDiff = lines . B.unpack . encodePretty
-            showExp exp =
-                B.unpack (encodePretty exp)
+            getJsonDiff :: FromServerMessage -> [String]
+            getJsonDiff = lines . LazyByteString.unpack . encodePretty
+            showExp e =
+                LazyByteString.unpack (encodePretty e)
                     ++ "\nDiff:\n"
-                    ++ ppDiff (getGroupedDiff (getJsonDiff received) (getJsonDiff exp))
+                    ++ ppDiff (getGroupedDiff (getJsonDiff received) (getJsonDiff e))
          in "Replay is out of order:\n"
                 ++
                 -- Print json so its a bit easier to update the session logs
                 "Received from server:\n"
-                ++ B.unpack (encodePretty received)
+                ++ LazyByteString.unpack (encodePretty received)
                 ++ "\n"
                 ++ "Raw from server:\n"
-                ++ B.unpack (encode received)
+                ++ LazyByteString.unpack (encode received)
                 ++ "\n"
                 ++ "Expected one of:\n"
                 ++ unlines (map showExp expected')
@@ -70,9 +75,9 @@ instance Show SessionException where
     show UnexpectedServerTermination = "Language server unexpectedly terminated"
     show (IllegalInitSequenceMessage msg) =
         "Received an illegal message between the initialize request and response:\n"
-            ++ B.unpack (encodePretty msg)
+            ++ LazyByteString.unpack (encodePretty msg)
     show (MessageSendError msg e) =
-        "IO exception:\n" ++ show e ++ "\narose while trying to send message:\n" ++ B.unpack (encodePretty msg)
+        "IO exception:\n" ++ show e ++ "\narose while trying to send message:\n" ++ LazyByteString.unpack (encodePretty msg)
 
 -- | A predicate that matches on any 'SessionException'
 anySessionException :: SessionException -> Bool

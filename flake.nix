@@ -121,7 +121,7 @@
           {
             packages.${name} = ps.${pname} or ps;
             devShells.${name} = ps.shellFor {
-              packages = ps: [ ps.dosh ];
+              packages = ps: with ps; [ dosh lsp-client ];
               withHoogle = true;
               nativeBuildInputs = with ps; [
                 cabal-fmt

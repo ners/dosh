@@ -3,22 +3,26 @@ module Language.LSP.ClientSpec where
 import Control.Arrow ((>>>))
 import Control.Exception
 import Control.Monad
-import Data.Aeson (FromJSON, ToJSON, (.:))
+import Control.Monad.Extra ()
+import Data.Aeson ((.:))
 import Data.Aeson qualified as Aeson
-import Data.ByteString.Lazy (LazyByteString)
-import Data.ByteString.Lazy.Char8 qualified as LazyByteString
+import Data.Aeson.Types (parseMaybe)
+import Data.ByteString.Lazy qualified as LazyByteString
 import Data.Maybe (fromJust)
-import GHC.Generics (Generic)
 import Language.LSP.Client
 import Language.LSP.Client.Decoding (getNextMessage)
+import Language.LSP.Client.Encoding (encode)
 import Language.LSP.Types
 import System.IO
 import System.Process (createPipe)
-import Test.Hspec
+import Test.Hspec hiding (shouldReturn)
+import Test.Hspec qualified as Hspec
 import UnliftIO (MonadIO (..), MonadUnliftIO, fromEither, race)
 import UnliftIO.Concurrent
 import Prelude hiding (log)
-import Data.Aeson.Types (parseMaybe)
+
+shouldReturn :: (MonadIO m, Show a, Eq a) => m a -> a -> m ()
+shouldReturn a expected = a >>= liftIO . flip Hspec.shouldBe expected
 
 withTimeout :: forall m a. MonadUnliftIO m => Int -> m a -> m a
 withTimeout delay a = fromEither =<< race timeout a
@@ -27,30 +31,33 @@ withTimeout delay a = fromEither =<< race timeout a
         threadDelay delay
         pure $ AssertionFailed "Timeout exceeded"
 
-addHeader :: LazyByteString -> LazyByteString
-addHeader content =
-    mconcat
-        [ "Content-Length: "
-        , LazyByteString.pack $ show $ LazyByteString.length content
-        , "\r\n"
-        , "\r\n"
-        , content
-        ]
-
-encode :: ToJSON a => a -> LazyByteString
-encode = addHeader . Aeson.encode
-
-data Config = Config
-    deriving stock (Generic, Show)
-    deriving anyclass (ToJSON, FromJSON)
+diagnostic :: Int -> Diagnostic
+diagnostic i =
+    Diagnostic
+        { _range =
+            Range
+                { _start = Position{_line = 0, _character = 0}
+                , _end = Position{_line = 0, _character = 0}
+                }
+        , _severity = Nothing
+        , _code = Just $ InL $ fromIntegral i
+        , _source = Nothing
+        , _message = ""
+        , _tags = Nothing
+        , _relatedInformation = Nothing
+        }
 
 -- | LSP server that does not read input, and sends dummy diagnostics once per second
-diagServer :: IO (Handle, Handle)
+diagServer :: IO (Handle, Handle, ThreadId)
 diagServer = do
-    (_, inWrite) <- createPipe
+    (inRead, inWrite) <- createPipe
+    hSetBuffering inRead NoBuffering
+    hSetBuffering inWrite NoBuffering
     (outRead, outWrite) <- createPipe
-    forkIO $ forM_ [1 ..] $ \i -> do
-        threadDelay 1_000_000
+    hSetBuffering outRead NoBuffering
+    hSetBuffering outWrite NoBuffering
+    threadId <- forkIO $ forM_ [1 ..] $ \i -> do
+        threadDelay 100_000
         let message =
                 NotificationMessage
                     "2.0"
@@ -58,17 +65,21 @@ diagServer = do
                     PublishDiagnosticsParams
                         { _uri = Uri ""
                         , _version = Nothing
-                        , _diagnostics = List []
+                        , _diagnostics = List [diagnostic i]
                         }
         LazyByteString.hPut outWrite $ encode message
-    pure (inWrite, outRead)
+    pure (inWrite, outRead, threadId)
 
 -- | LSP server that accepts requests and answers them with a delay
-reqServer :: IO (Handle, Handle)
+reqServer :: IO (Handle, Handle, ThreadId)
 reqServer = do
     (inRead, inWrite) <- createPipe
+    hSetBuffering inRead NoBuffering
+    hSetBuffering inWrite NoBuffering
     (outRead, outWrite) <- createPipe
-    forkIO $ forever $ do
+    hSetBuffering outRead NoBuffering
+    hSetBuffering outWrite NoBuffering
+    threadId <- forkIO $ forever $ do
         bytes <- liftIO $ getNextMessage inRead
         let obj = fromJust $ Aeson.decode bytes
         let idMaybe = parseMaybe (.: "id") obj
@@ -76,56 +87,47 @@ reqServer = do
         forkIO $ do
             threadDelay 100_000
             LazyByteString.hPut outWrite $ encode message
-    pure (inWrite, outRead)
+    pure (inWrite, outRead, threadId)
 
 -- | LSP client that waits for queries
-client :: Handle -> Handle -> IO (Session () -> IO ())
-client input output = do
+client :: Handle -> Handle -> IO (Session () -> IO (), ThreadId)
+client serverInput serverOutput = do
     i <- newEmptyMVar
     o <- newEmptyMVar
-    forkIO $ runSessionWithHandles input output $ forever $ do
+    threadId <- forkIO $ runSessionWithHandles serverOutput serverInput $ forever $ do
         a <- takeMVar i
         a >>= putMVar o
-    pure $ putMVar i >>> (*> readMVar o)
+    pure (putMVar i >>> (*> readMVar o), threadId)
 
 spec :: Spec
 spec = do
     it "concurrently handles actions and server messages" $ do
-        input <- reqServer >>= uncurry client
-        threadDelay 1_000_000
-        input $ do
-            d <- withTimeout 1_000_000 getDiagnostics
-            liftIO $ d `shouldBe` [] -- server diagnostics message n
-        threadDelay 1_000_000
-        input $ do
-            d <- withTimeout 1_000_000 getDiagnostics
-            liftIO $ d `shouldBe` [] -- server diagnostics message >n
+        (serverIn, serverOut, serverThread) <- diagServer
+        flip finally (killThread serverThread) $ runSessionWithHandles serverOut serverIn $ do
+            -- TODO: we should probably do something smarter than sleep
+            getDiagnostics `shouldReturn` []
+            threadDelay 110_000
+            getDiagnostics `shouldReturn` [diagnostic 1]
+            threadDelay 110_000
+            getDiagnostics `shouldReturn` [diagnostic 2]
     it "answers requests correctly" $ do
-        input <- reqServer >>= uncurry client
-        req1Done <- newEmptyMVar
-        req1Id <- newEmptyMVar
-        input $ do
-            sendRequest
-                SShutdown
-                Empty
-                ( \reqId _ -> do
-                    (reqId `shouldBe`) =<< takeMVar req1Id
-                    putMVar req1Done ()
-                )
-                >>= putMVar req1Id
-        req2Done <- newEmptyMVar
-        req2Id <- newEmptyMVar
-        input $ do
-            sendRequest
-                SShutdown
-                Empty
-                ( \reqId _ -> do
-                    (reqId `shouldBe`) =<< takeMVar req2Id
-                    putMVar req2Done ()
-                )
-                >>= putMVar req2Id
-        tryTakeMVar req1Done `shouldReturn` Nothing
-        tryTakeMVar req2Done `shouldReturn` Nothing
-        threadDelay 1_100_000
-        tryTakeMVar req1Done `shouldReturn` Just ()
-        tryTakeMVar req2Done `shouldReturn` Just ()
+        (serverIn, serverOut, serverThread) <- reqServer
+        (clientIn, clientThread) <- client serverIn serverOut
+        flip finally (mapM_ killThread [serverThread, clientThread]) $ do
+            req1Done <- newEmptyMVar
+            clientIn $ do
+                sendRequest
+                    SShutdown
+                    Empty
+                    (putMVar req1Done . (._id))
+            req2Done <- newEmptyMVar
+            clientIn $ do
+                sendRequest
+                    SShutdown
+                    Empty
+                    (putMVar req2Done . (._id))
+            tryTakeMVar req1Done `shouldReturn` Nothing
+            tryTakeMVar req2Done `shouldReturn` Nothing
+            threadDelay 110_000
+            tryTakeMVar req1Done `shouldReturn` Just (Just (IdInt 1))
+            tryTakeMVar req2Done `shouldReturn` Just (Just (IdInt 2))

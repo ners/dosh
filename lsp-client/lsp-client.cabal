@@ -41,25 +41,27 @@ common common
         ViewPatterns
     build-depends:
         aeson,
-        aeson-pretty,
         base,
         bytestring,
-        Diff,
+        generic-lens,
+        lens,
         lsp-types,
-        text,
-        unliftio,
 
 library
     import:           common
     hs-source-dirs:   src
     build-depends:
-        generic-lens,
-        lens,
+        Diff,
+        aeson-pretty,
+        containers,
+        lifted-async,
         mtl,
+        stm,
         unordered-containers,
     exposed-modules:
         Language.LSP.Client,
         Language.LSP.Client.Decoding,
+        Language.LSP.Client.Encoding,
         Language.LSP.Client.Exceptions
 
 test-suite spec
@@ -69,12 +71,10 @@ test-suite spec
     hs-source-dirs:   test
     main-is:          Spec.hs
     build-depends:
-        QuickCheck,
-        co-log-core,
+        extra,
         hspec,
-        lsp,
-        prettyprinter,
         lsp-client,
         process,
+        unliftio,
     other-modules:
         Language.LSP.ClientSpec
