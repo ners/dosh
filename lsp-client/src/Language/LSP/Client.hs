@@ -1,4 +1,5 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE LambdaCase #-}
 
 module Language.LSP.Client where
 
@@ -126,6 +127,12 @@ request method params = do
     void $ sendRequest method params $ putMVar done
     liftIO $ takeMVar done
 
+-- | Checks the response for errors and throws an exception if needed.
+-- Returns the result if successful.
+getResponseResult :: ResponseMessage m -> ResponseResult m
+getResponseResult response = either err id $ response._result
+    where err = throw . UnexpectedResponseError (SomeLspId $ fromJust $ response._id)
+
 -- | Sends a notification to the server.
 sendNotification
     :: ToJSON (MessageParams m)
@@ -150,14 +157,24 @@ initialize = do
               , _trace = Just TraceOff
               , _workspaceFolders = Nothing
               }
-    case response._result of
-        Left e -> throw $ UnexpectedResponseError (SomeLspId $ fromJust response._id) e
-        Right r -> asks initialized >>= liftIO . atomically . flip putTMVar r
+    asks initialized >>= liftIO . atomically . flip putTMVar (getResponseResult response)
     sendNotification SInitialized $ Just InitializedParams
 
+-- | Returns the current diagnostics that have been sent to the client.
+-- Note that this does not wait for more to come in.
 getDiagnostics :: Session [Diagnostic]
 getDiagnostics = asks lastDiagnostics >>= liftIO . readTVarIO
 
---
--- getDocumentContents :: Uri -> Session Text
--- getDocumentContents uri = undefined
+-- | Returns the completions for the position in the document.
+getCompletions :: TextDocumentIdentifier -> Position -> Session [CompletionItem]
+getCompletions doc pos = do
+  response <- request STextDocumentCompletion CompletionParams
+        { _textDocument = doc
+        , _position = pos
+        , _workDoneToken = Nothing
+        , _partialResultToken = Nothing
+        , _context = Nothing
+        }
+  case getResponseResult response of
+    InL (List items) -> pure items
+    InR (CompletionList{_items = List items}) -> pure items

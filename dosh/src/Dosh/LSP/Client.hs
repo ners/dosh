@@ -19,7 +19,6 @@ data Request
     | GetDocumentContents {uri :: Uri}
     | GetDiagnostics {uri :: Uri}
     | GetCompletions {uri :: Uri, position :: Position}
-    | WaitForDiagnostics
 
 data Response
     = DocumentContents {uri :: Uri, contents :: Text}
@@ -77,6 +76,5 @@ handleRequest _ ChangeDocument{..} =
 handleRequest respond GetDocumentContents{uri} = do
     contents <- LSP.documentContents $ TextDocumentIdentifier uri
     liftIO $ respond DocumentContents{..}
-handleRequest respond WaitForDiagnostics{} = LSP.waitForDiagnostics >>= liftIO . respond . Diagnostics
-handleRequest respond GetDiagnostics{..} = LSP.getCurrentDiagnostics (TextDocumentIdentifier uri) >>= liftIO . respond . Diagnostics
+handleRequest respond GetDiagnostics{..} = LSP.getDiagnostics (TextDocumentIdentifier uri) >>= liftIO . respond . Diagnostics
 handleRequest respond GetCompletions{..} = LSP.getCompletions (TextDocumentIdentifier uri) position >>= liftIO . respond . Completions
