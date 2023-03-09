@@ -5,7 +5,6 @@
 module Language.LSP.Client.Decoding where
 
 import Control.Exception (catch, throw)
-import Control.Lens (Const (Const), (<&>))
 import Data.Aeson (Result (Error, Success), Value, decode)
 import Data.Aeson.Types (parse)
 import Data.ByteString.Lazy.Char8 qualified as B
@@ -17,6 +16,8 @@ import Language.LSP.Types
 import System.IO (Handle, hGetLine)
 import System.IO.Error (isEOFError)
 import Prelude hiding (id)
+import Data.Functor.Const
+import Data.Functor
 
 {- | Fetches the next message bytes based on
  the Content-Length header

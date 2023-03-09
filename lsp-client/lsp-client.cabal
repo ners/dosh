@@ -43,9 +43,6 @@ common common
         aeson,
         base,
         bytestring,
-        generic-lens,
-        lens,
-        lsp,
         lsp-types,
         process,
 
@@ -55,11 +52,11 @@ library
     build-depends:
         Diff,
         aeson-pretty,
-        containers,
+        generic-lens,
         lifted-async,
+        lsp,
         mtl,
         stm,
-        unordered-containers,
     if os(windows)
         build-depends: Win32
     else

@@ -5,7 +5,6 @@ module Language.LSP.Client where
 import Control.Concurrent.Async.Lifted ( concurrently_, race )
 import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
 import Control.Concurrent.STM
-import Control.Lens ( (<&>), Lens' )
 import Control.Monad (forever)
 import Control.Monad.IO.Class ( MonadIO(liftIO) )
 import Control.Monad.Reader (ReaderT, asks, runReaderT)
@@ -14,7 +13,7 @@ import Data.ByteString.Lazy (LazyByteString)
 import Data.ByteString.Lazy qualified as LazyByteString
 import Data.Coerce (coerce)
 import Data.Either (fromLeft)
-import Data.Functor (void)
+import Data.Functor (void, (<&>))
 import Data.Generics.Labels ()
 import Data.IxMap (insertIxMap)
 import Data.Maybe (fromMaybe, fromJust)
@@ -53,9 +52,6 @@ defaultSessionState vfs' = do
     incoming <- newTQueueIO
     vfs <- newTVarIO vfs'
     pure SessionState{..}
-
-class HasDiagnostics a where
-    diagnostics :: Lens' a (Maybe [Diagnostic])
 
 type Session = ReaderT SessionState IO
 
