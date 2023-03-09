@@ -1,12 +1,13 @@
-{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE CPP #-}
 
 module Language.LSP.Client where
 
-import Control.Concurrent.Async.Lifted
+import Control.Concurrent.Async.Lifted ( concurrently_, race )
+import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
 import Control.Concurrent.STM
-import Control.Lens
+import Control.Lens ( (<&>), Lens' )
 import Control.Monad (forever)
-import Control.Monad.IO.Class
+import Control.Monad.IO.Class ( MonadIO(liftIO) )
 import Control.Monad.Reader (ReaderT, asks, runReaderT)
 import Data.Aeson (FromJSON, ToJSON)
 import Data.ByteString.Lazy (LazyByteString)
@@ -16,22 +17,22 @@ import Data.Either (fromLeft)
 import Data.Functor (void)
 import Data.Generics.Labels ()
 import Data.IxMap (insertIxMap)
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, fromJust)
+import Language.LSP.Client.Compat ( getCurrentProcessID )
 import Language.LSP.Client.Decoding
-    ( Callback (..)
-    , RequestMap
-    , decodeFromServerMsg
-    , getNextMessage
-    , newRequestMap
-    )
 import Language.LSP.Client.Encoding (encode)
 import Language.LSP.Types
 import Language.LSP.VFS (VFS, initVFS)
 import System.IO (Handle, stdin, stdout)
 import Prelude
+import Language.LSP.Types.Capabilities (fullCaps)
+import Language.LSP.Client.Exceptions
+    ( SessionException(UnexpectedResponseError) )
+import Control.Exception (throw)
 
 data SessionState = SessionState
-    { pendingRequests :: TVar RequestMap
+    { initialized :: TMVar InitializeResult
+    , pendingRequests :: TVar RequestMap
     , lastRequestId :: TVar Int32
     , lastDiagnostics :: TVar [Diagnostic]
     , incoming :: TQueue LazyByteString
@@ -44,6 +45,7 @@ data SessionState = SessionState
 
 defaultSessionState :: VFS -> IO SessionState
 defaultSessionState vfs' = do
+    initialized <- newEmptyTMVarIO
     pendingRequests <- newTVarIO newRequestMap
     lastRequestId <- newTVarIO 0
     lastDiagnostics <- newTVarIO []
@@ -89,25 +91,20 @@ runSessionWithHandles input output action = initVFS $ \vfs -> do
                     case serverMessage of
                         FromServerMess STextDocumentPublishDiagnostics msg ->
                             asks lastDiagnostics
-                                >>= liftIO . atomically . flip writeTVar (enzyme msg)
-                        _ -> pure ()
-                    liftIO callback
+                                >>= liftIO . atomically . flip writeTVar (coerce msg._params._diagnostics)
+                        _ -> liftIO callback
             concurrently_ (forever send) (forever receive)
         pure $ fromLeft (error "send/receive thread should not exit!") actionResult
-  where
-    enzyme :: NotificationMessage 'TextDocumentPublishDiagnostics -> [Diagnostic]
-    enzyme msg = coerce msg._params._diagnostics
 
+-- | Sends a request to the server, with a callback that fires when the response arrives.
 sendRequest
     :: (FromJSON (SMethod m), ToJSON (MessageParams m))
     => SClientMethod m
     -> MessageParams m
     -> (ResponseMessage m -> IO ())
-    -> Session ()
+    -> Session (LspId m)
 sendRequest method params callback = do
     reqId <- asks lastRequestId >>= liftIO . atomically . overTVar (+ 1) <&> IdInt
-
-    let message = encode $ RequestMessage "2.0" reqId method params
     asks pendingRequests
         >>= void
             . liftIO
@@ -116,12 +113,52 @@ sendRequest method params callback = do
                 ( \requestMap ->
                     fromMaybe requestMap $ insertIxMap reqId Callback{..} requestMap
                 )
+    let message = encode $ RequestMessage "2.0" reqId method params
+    asks outgoing >>= liftIO . atomically . (`writeTQueue` message)
+    pure reqId
+
+-- | Sends a request to the server and waits for its response.
+request
+    :: ( FromJSON (SMethod m)
+       , ToJSON (MessageParams m)
+       )
+    => SClientMethod m
+    -> MessageParams m
+    -> Session (ResponseMessage m)
+request method params = do
+    done <- liftIO newEmptyMVar
+    void $ sendRequest method params $ putMVar done
+    liftIO $ takeMVar done
+
+-- | Sends a notification to the server.
+sendNotification
+    :: ToJSON (MessageParams m)
+    => SClientMethod (m :: Method 'FromClient 'Notification)
+    -> MessageParams m
+    -> Session ()
+sendNotification method params = do
+    let message = encode $ NotificationMessage "2.0" method params
     asks outgoing >>= liftIO . atomically . (`writeTQueue` message)
 
---
--- sendNotification :: LspNotification -> Session ()
--- sendNotification notification = undefined
---
+initialize :: Session ()
+initialize = do
+    pid <- liftIO getCurrentProcessID
+    response <- request SInitialize InitializeParams
+              { _workDoneToken = Nothing
+              , _processId = Just $ fromIntegral pid
+              , _clientInfo = Just ClientInfo{ _name = "lsp-client", _version = Just CURRENT_PACKAGE_VERSION}
+              , _rootPath = Nothing
+              , _rootUri = Nothing
+              , _initializationOptions = Nothing
+              , _capabilities = fullCaps
+              , _trace = Just TraceOff
+              , _workspaceFolders = Nothing
+              }
+    case response._result of
+        Left e -> throw $ UnexpectedResponseError (SomeLspId $ fromJust response._id) e
+        Right r -> asks initialized >>= liftIO . atomically . flip putTMVar r
+    sendNotification SInitialized $ Just InitializedParams
+
 getDiagnostics :: Session [Diagnostic]
 getDiagnostics = asks lastDiagnostics >>= liftIO . readTVarIO
 

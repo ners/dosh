@@ -6,6 +6,7 @@ module Language.LSP.Client.Compat where
 import Data.Maybe
 import Language.LSP.Types
 import System.IO
+import Prelude
 
 #if MIN_VERSION_process(1,6,3)
 -- We have to hide cleanupProcess for process-1.6.3.0
@@ -13,7 +14,7 @@ import System.IO
 -- shipped with ghc >= 8.6 and < 8.6.4
 import System.Process hiding (getPid, cleanupProcess, withCreateProcess)
 # if MIN_VERSION_process(1,6,4)
-import qualified System.Process (getPid, cleanupProcess, withCreateProcess)
+import System.Process qualified (getPid, cleanupProcess, withCreateProcess)
 # else
 import Foreign.C.Error
 import GHC.IO.Exception ( IOErrorType(..), IOException(..) )
@@ -34,7 +35,7 @@ import qualified Control.Exception as C
 #ifdef mingw32_HOST_OS
 import qualified System.Win32.Process
 #else
-import qualified System.Posix.Process
+import System.Posix.Process qualified
 #endif
 
 getCurrentProcessID :: IO Int

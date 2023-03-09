@@ -115,17 +115,9 @@ spec = do
         (clientIn, clientThread) <- client serverIn serverOut
         flip finally (mapM_ killThread [serverThread, clientThread]) $ do
             req1Done <- newEmptyMVar
-            clientIn $ do
-                sendRequest
-                    SShutdown
-                    Empty
-                    (putMVar req1Done . (._id))
+            clientIn $ void $ sendRequest SShutdown Empty (putMVar req1Done . (._id))
             req2Done <- newEmptyMVar
-            clientIn $ do
-                sendRequest
-                    SShutdown
-                    Empty
-                    (putMVar req2Done . (._id))
+            clientIn $ void $ sendRequest SShutdown Empty (putMVar req2Done . (._id))
             tryTakeMVar req1Done `shouldReturn` Nothing
             tryTakeMVar req2Done `shouldReturn` Nothing
             threadDelay 110_000

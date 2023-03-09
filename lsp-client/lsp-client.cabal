@@ -47,6 +47,7 @@ common common
         lens,
         lsp,
         lsp-types,
+        process,
 
 library
     import:           common
@@ -59,8 +60,13 @@ library
         mtl,
         stm,
         unordered-containers,
+    if os(windows)
+        build-depends: Win32
+    else
+        build-depends: unix
     exposed-modules:
         Language.LSP.Client,
+        Language.LSP.Client.Compat,
         Language.LSP.Client.Decoding,
         Language.LSP.Client.Encoding,
         Language.LSP.Client.Exceptions
@@ -75,7 +81,6 @@ test-suite spec
         extra,
         hspec,
         lsp-client,
-        process,
         unliftio,
     other-modules:
         Language.LSP.ClientSpec

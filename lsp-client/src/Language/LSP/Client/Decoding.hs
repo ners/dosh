@@ -4,23 +4,18 @@
 
 module Language.LSP.Client.Decoding where
 
-import Control.Exception
-import Control.Lens
-import Data.Aeson
-import Data.Aeson.Types
+import Control.Exception (catch, throw)
+import Control.Lens (Const (Const), (<&>))
+import Data.Aeson (Result (Error, Success), Value, decode)
+import Data.Aeson.Types (parse)
 import Data.ByteString.Lazy.Char8 qualified as B
-import Data.Foldable
-import Data.Functor.Product
-import Data.HashMap.Strict (HashMap)
-import Data.IxMap
-import Data.Kind
-import Data.Maybe
-import Data.Traversable (for)
+import Data.Functor.Product (Product (Pair))
+import Data.IxMap (IxMap, emptyIxMap, insertIxMap, pickFromIxMap)
+import Data.Maybe (fromJust)
 import Language.LSP.Client.Exceptions
 import Language.LSP.Types
-import Language.LSP.Types.Lens
-import System.IO
-import System.IO.Error
+import System.IO (Handle, hGetLine)
+import System.IO.Error (isEOFError)
 import Prelude hiding (id)
 
 {- | Fetches the next message bytes based on
