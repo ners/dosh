@@ -35,9 +35,8 @@
       let
         pkgs = inputs.nixpkgs.legacyPackages.${system};
         lib = inputs.nixpkgs.lib;
-        pname = "dosh";
-        src = inputs.nix-filter.lib {
-          root = ./.;
+        src = pname: inputs.nix-filter.lib {
+          root = "${./.}/${pname}";
           include = [
             "app"
             "src"
@@ -53,9 +52,9 @@
             let ghcVersionAtLeast = lib.versionAtLeast ps.ghc.version; in
             builtins.trace "GHC version: ${ps.ghc.version}"
               ({
-                dosh-prelude = self.callCabal2nix pname ./dosh-prelude { };
-                dosh = self.callCabal2nix pname src { };
-                lsp-client = self.callCabal2nix pname ./lsp-client { };
+                dosh-prelude = self.callCabal2nix "dosh-prelude" (src "dosh-prelude") { };
+                dosh = self.callCabal2nix "dosh" (src "dosh") { };
+                lsp-client = self.callCabal2nix "lsp-client" (src "lsp-client") { };
                 reflex-process = doJailbreak super.reflex-process;
                 reflex-vty = self.callCabal2nix "reflex-vty" inputs.reflex-vty { };
                 haskell-language-server = lib.pipe super.haskell-language-server [
@@ -130,7 +129,6 @@
                 haskell-language-server
                 pkgs.cachix
                 pkgs.nixpkgs-fmt
-                pkgs.texlive.combined.scheme-full
               ];
               shellHook = ''
                 export PATH=${
@@ -151,7 +149,7 @@
             name = "defaultGhc";
           }
           {
-            inherit pname;
+            pname = "dosh";
             inherit (pkgs) haskellPackages;
             name = "default";
           }

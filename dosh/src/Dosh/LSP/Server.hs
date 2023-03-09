@@ -4,10 +4,8 @@
 module Dosh.LSP.Server where
 
 import Conduit (MonadCatch (catch))
-import Control.Monad.Extra (whenM)
 import Data.ByteString (hGetSome, hPut)
 import Data.ByteString.Builder.Extra (defaultChunkSize)
-import Data.Conduit.Parser (peek)
 import Data.Text.Encoding qualified as Text
 import Data.Text.IO qualified as Text
 import Development.IDE (Logger (Logger), Pretty (pretty), Recorder (..), WithPriority, cmapWithPrio, logWith)
@@ -15,8 +13,7 @@ import Development.IDE.Main (Arguments (..), defaultArguments, defaultMain)
 import Dosh.Prelude hiding (catch)
 import Dosh.Util hiding (withTimeout)
 import HlsPlugins (idePlugins)
-import Language.LSP.Test (withTimeout)
-import Language.LSP.Test qualified as LSP
+import Language.LSP.Client qualified as LSP
 import Reflex
     ( Reflex (Event)
     , TriggerEvent (newTriggerEvent)
@@ -66,18 +63,10 @@ server = do
         pure (inWrite, outRead)
     i <- newEmptyMVar
     o <- newEmptyMVar
-    liftIO $ forkIO $ LSP.runSessionWithHandles input output LSP.defaultConfig LSP.fullCaps "." $ forever $ do
-        let handleMessage = pure ()
-        -- flip (catch @_ @SomeException) (const $ pure ()) $
-        --    withTimeout 1000 $
-        --        whenM (isJust <$> LSP.Session peek) $
-        --            void LSP.anyMessage
-        let handleInput = do
-                a <- takeMVar i
-                result <- a `catch` (liftIO . reportError)
-                putMVar o result
-        -- TODO: concurrently (forever handleMessage) (forever handleInput)
-        handleMessage >> handleInput
+    liftIO $ forkIO $ LSP.runSessionWithHandles input output $ forever $ do
+        a <- takeMVar i
+        result <- a `catch` (liftIO . reportError)
+        putMVar o result
     pure
         Server
             { input = putMVar i >>> (*> takeMVar o)

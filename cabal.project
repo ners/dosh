@@ -1,0 +1,4 @@
+packages:
+    dosh/
+    dosh-prelude/
+    lsp-client/

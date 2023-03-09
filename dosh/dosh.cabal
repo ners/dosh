@@ -79,7 +79,7 @@ library
         haskell-language-server,
         hls-plugin-api,
         lens,
-        lsp-test,
+        lsp-client,
         lsp-types,
         mtl,
         process,
