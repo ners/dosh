@@ -51,12 +51,19 @@ library
     hs-source-dirs:   src
     build-depends:
         Diff,
+        Glob,
         aeson-pretty,
+        containers,
+        directory,
+        filepath,
         generic-lens,
+        lens,
         lifted-async,
         lsp,
         mtl,
         stm,
+        text,
+        unordered-containers,
     if os(windows)
         build-depends: Win32
     else
