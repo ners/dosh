@@ -45,6 +45,7 @@ common common
         bytestring,
         generic-lens,
         lens,
+        lsp,
         lsp-types,
 
 library

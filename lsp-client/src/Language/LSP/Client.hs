@@ -26,6 +26,7 @@ import Language.LSP.Client.Decoding
     )
 import Language.LSP.Client.Encoding (encode)
 import Language.LSP.Types
+import Language.LSP.VFS (VFS, initVFS)
 import System.IO (Handle, stdin, stdout)
 import Prelude
 
@@ -37,15 +38,18 @@ data SessionState = SessionState
     -- ^ bytes that have been read from the input handle, but not yet parsed
     , outgoing :: TQueue LazyByteString
     -- ^ messages that have been serialised but not yet written to the output handle
+    , vfs :: TVar VFS
+    -- ^ virtual, in-memory file system of the files known to the LSP
     }
 
-defaultSessionState :: IO SessionState
-defaultSessionState = do
+defaultSessionState :: VFS -> IO SessionState
+defaultSessionState vfs' = do
     pendingRequests <- newTVarIO newRequestMap
     lastRequestId <- newTVarIO 0
     lastDiagnostics <- newTVarIO []
     outgoing <- newTQueueIO
     incoming <- newTQueueIO
+    vfs <- newTVarIO vfs'
     pure SessionState{..}
 
 class HasDiagnostics a where
@@ -62,8 +66,8 @@ overTVar :: (a -> a) -> TVar a -> STM a
 overTVar f var = stateTVar var (\x -> (f x, f x))
 
 runSessionWithHandles :: Handle -> Handle -> Session a -> IO a
-runSessionWithHandles input output action = do
-    initialState <- defaultSessionState
+runSessionWithHandles input output action = initVFS $ \vfs -> do
+    initialState <- defaultSessionState vfs
     flip runReaderT initialState $ do
         actionResult <- race action $ do
             let send = do
