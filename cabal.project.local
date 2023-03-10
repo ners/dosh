@@ -2,3 +2,5 @@ ignore-project: False
 tests: True
 test-options: "--color", "--times", "--print-cpu-time"
 test-show-details: direct
+profiling: True
+library-profiling: True

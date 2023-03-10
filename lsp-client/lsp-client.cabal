@@ -77,11 +77,12 @@ library
 
 test-suite spec
     import:           common
-    ghc-options:      -threaded
+    ghc-options:      -threaded -prof
     type:             exitcode-stdio-1.0
     hs-source-dirs:   test
     main-is:          Spec.hs
     build-depends:
+        QuickCheck,
         extra,
         hspec,
         lsp-client,

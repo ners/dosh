@@ -17,6 +17,8 @@ import System.IO
 import System.Process (createPipe)
 import Test.Hspec hiding (shouldReturn)
 import Test.Hspec qualified as Hspec
+import Test.Hspec.QuickCheck
+import Test.QuickCheck
 import UnliftIO (MonadIO (..), MonadUnliftIO, fromEither, race)
 import UnliftIO.Concurrent
 import Prelude hiding (log)
@@ -51,13 +53,13 @@ diagnostic i =
 diagServer :: IO (Handle, Handle, ThreadId)
 diagServer = do
     (inRead, inWrite) <- createPipe
-    hSetBuffering inRead NoBuffering
-    hSetBuffering inWrite NoBuffering
+    hSetBuffering inRead LineBuffering
+    hSetBuffering inWrite LineBuffering
     (outRead, outWrite) <- createPipe
-    hSetBuffering outRead NoBuffering
-    hSetBuffering outWrite NoBuffering
+    hSetBuffering outRead LineBuffering
+    hSetBuffering outWrite LineBuffering
     threadId <- forkIO $ forM_ [1 ..] $ \i -> do
-        threadDelay 100_000
+        threadDelay 1_000
         let message =
                 NotificationMessage
                     "2.0"
@@ -74,19 +76,23 @@ diagServer = do
 reqServer :: IO (Handle, Handle, ThreadId)
 reqServer = do
     (inRead, inWrite) <- createPipe
-    hSetBuffering inRead NoBuffering
-    hSetBuffering inWrite NoBuffering
+    hSetBuffering inRead LineBuffering
+    hSetBuffering inWrite LineBuffering
     (outRead, outWrite) <- createPipe
-    hSetBuffering outRead NoBuffering
-    hSetBuffering outWrite NoBuffering
+    hSetBuffering outRead LineBuffering
+    hSetBuffering outWrite LineBuffering
+    lock <- newMVar ()
     threadId <- forkIO $ forever $ do
         bytes <- liftIO $ getNextMessage inRead
         let obj = fromJust $ Aeson.decode bytes
         let idMaybe = parseMaybe (.: "id") obj
         let message = ResponseMessage "2.0" idMaybe (Right Empty) :: ResponseMessage 'Shutdown
         forkIO $ do
-            threadDelay 100_000
+            threadDelay 1_000
+            takeMVar lock
             LazyByteString.hPut outWrite $ encode message
+            putMVar lock ()
+
     pure (inWrite, outRead, threadId)
 
 -- | LSP client that waits for queries
@@ -101,25 +107,24 @@ client serverInput serverOutput = do
 
 spec :: Spec
 spec = do
-    it "concurrently handles actions and server messages" $ do
+    prop "concurrently handles actions and server messages" $ again $ do
         (serverIn, serverOut, serverThread) <- diagServer
         flip finally (killThread serverThread) $ runSessionWithHandles serverOut serverIn $ do
             -- TODO: we should probably do something smarter than sleep
             getDiagnostics `shouldReturn` []
-            threadDelay 110_000
-            getDiagnostics `shouldReturn` [diagnostic 1]
-            threadDelay 110_000
-            getDiagnostics `shouldReturn` [diagnostic 2]
-    it "answers requests correctly" $ do
+            threadDelay 3_000
+            [d1] <- getDiagnostics
+            threadDelay 3_000
+            [d2] <- getDiagnostics
+            liftIO $ d2._code `shouldNotBe` d1._code
+    prop "answers requests correctly" $ again $ do
         (serverIn, serverOut, serverThread) <- reqServer
-        (clientIn, clientThread) <- client serverIn serverOut
-        flip finally (mapM_ killThread [serverThread, clientThread]) $ do
+        flip finally (threadDelay 1_500 >> killThread serverThread) $ runSessionWithHandles serverOut serverIn $ do
             req1Done <- newEmptyMVar
-            clientIn $ void $ sendRequest SShutdown Empty (putMVar req1Done . (._id))
+            req1Id <- sendRequest SShutdown Empty (putMVar req1Done . (._id))
             req2Done <- newEmptyMVar
-            clientIn $ void $ sendRequest SShutdown Empty (putMVar req2Done . (._id))
+            req2Id <- sendRequest SShutdown Empty (putMVar req2Done . (._id))
             tryTakeMVar req1Done `shouldReturn` Nothing
             tryTakeMVar req2Done `shouldReturn` Nothing
-            threadDelay 110_000
-            tryTakeMVar req1Done `shouldReturn` Just (Just (IdInt 1))
-            tryTakeMVar req2Done `shouldReturn` Just (Just (IdInt 2))
+            withTimeout 10_500 $ takeMVar req1Done `shouldReturn` Just req1Id
+            withTimeout 1_000 $ takeMVar req2Done `shouldReturn` Just req2Id

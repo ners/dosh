@@ -1,11 +1,10 @@
-{-# LANGUAGE CPP #-}
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE CPP #-}
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
 
 module Language.LSP.Client where
 
-import Control.Concurrent.Async.Lifted ( concurrently_, race )
+import Control.Concurrent.Async.Lifted (concurrently_, race)
 import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
 import Control.Concurrent.STM
 -- import Data.Map.Strict qualified as Map
@@ -19,7 +18,7 @@ import Control.Concurrent.STM
 import Control.Exception (throw)
 import Control.Lens hiding (List)
 import Control.Monad (forever)
-import Control.Monad.IO.Class ( MonadIO(liftIO) )
+import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (ReaderT, asks, runReaderT)
 import Data.Aeson (FromJSON, ToJSON)
 import Data.ByteString.Lazy (LazyByteString)
@@ -30,13 +29,14 @@ import Data.Functor (void)
 import Data.Generics.Labels ()
 import Data.IxMap (insertIxMap)
 import Data.Maybe (fromJust, fromMaybe)
-import Data.Text qualified as T
-import Data.Text.IO qualified as T
-import Language.LSP.Client.Compat ( getCurrentProcessID )
+import Data.Text (Text)
+import Data.Text.IO qualified as Text
+import Language.LSP.Client.Compat (getCurrentProcessID)
 import Language.LSP.Client.Decoding
 import Language.LSP.Client.Encoding (encode)
 import Language.LSP.Client.Exceptions (SessionException (UnexpectedResponseError))
 import Language.LSP.Types
+import Language.LSP.Types.Capabilities (fullCaps)
 import Language.LSP.Types.Lens hiding (applyEdit, capabilities, executeCommand, id, message, rename, to)
 import Language.LSP.VFS
     ( VFS
@@ -48,7 +48,6 @@ import Language.LSP.VFS
 import System.FilePath ((</>))
 import System.IO (Handle, stdin, stdout)
 import Prelude
-import Language.LSP.Types.Capabilities (fullCaps)
 
 data SessionState = SessionState
     { initialized :: TMVar InitializeResult
@@ -73,8 +72,7 @@ defaultSessionState vfs' = do
     outgoing <- newTQueueIO
     incoming <- newTQueueIO
     vfs <- newTVarIO vfs'
-    rootDir <- undefined
-    pure SessionState{..}
+    pure SessionState{rootDir = "", ..}
 
 type Session = ReaderT SessionState IO
 
@@ -149,11 +147,13 @@ request method params = do
     void $ sendRequest method params $ putMVar done
     liftIO $ takeMVar done
 
--- | Checks the response for errors and throws an exception if needed.
--- Returns the result if successful.
+{- | Checks the response for errors and throws an exception if needed.
+ Returns the result if successful.
+-}
 getResponseResult :: ResponseMessage m -> ResponseResult m
 getResponseResult response = either err id $ response._result
-    where err = throw . UnexpectedResponseError (SomeLspId $ fromJust $ response._id)
+  where
+    err = throw . UnexpectedResponseError (SomeLspId $ fromJust $ response._id)
 
 -- | Sends a notification to the server.
 sendNotification
@@ -168,38 +168,45 @@ sendNotification method params = do
 initialize :: Session ()
 initialize = do
     pid <- liftIO getCurrentProcessID
-    response <- request SInitialize InitializeParams
-              { _workDoneToken = Nothing
-              , _processId = Just $ fromIntegral pid
-              , _clientInfo = Just ClientInfo{ _name = "lsp-client", _version = Just CURRENT_PACKAGE_VERSION}
-              , _rootPath = Nothing
-              , _rootUri = Nothing
-              , _initializationOptions = Nothing
-              , _capabilities = fullCaps
-              , _trace = Just TraceOff
-              , _workspaceFolders = Nothing
-              }
+    response <-
+        request
+            SInitialize
+            InitializeParams
+                { _workDoneToken = Nothing
+                , _processId = Just $ fromIntegral pid
+                , _clientInfo = Just ClientInfo{_name = "lsp-client", _version = Just CURRENT_PACKAGE_VERSION}
+                , _rootPath = Nothing
+                , _rootUri = Nothing
+                , _initializationOptions = Nothing
+                , _capabilities = fullCaps
+                , _trace = Just TraceOff
+                , _workspaceFolders = Nothing
+                }
     asks initialized >>= liftIO . atomically . flip putTMVar (getResponseResult response)
     sendNotification SInitialized $ Just InitializedParams
 
--- | Returns the current diagnostics that have been sent to the client.
--- Note that this does not wait for more to come in.
+{- | Returns the current diagnostics that have been sent to the client.
+ Note that this does not wait for more to come in.
+-}
 getDiagnostics :: Session [Diagnostic]
 getDiagnostics = asks lastDiagnostics >>= liftIO . readTVarIO
 
 -- | Returns the completions for the position in the document.
 getCompletions :: TextDocumentIdentifier -> Position -> Session [CompletionItem]
 getCompletions doc pos = do
-  response <- request STextDocumentCompletion CompletionParams
-        { _textDocument = doc
-        , _position = pos
-        , _workDoneToken = Nothing
-        , _partialResultToken = Nothing
-        , _context = Nothing
-        }
-  case getResponseResult response of
-    InL (List items) -> pure items
-    InR (CompletionList{_items = List items}) -> pure items
+    response <-
+        request
+            STextDocumentCompletion
+            CompletionParams
+                { _textDocument = doc
+                , _position = pos
+                , _workDoneToken = Nothing
+                , _partialResultToken = Nothing
+                , _context = Nothing
+                }
+    case getResponseResult response of
+        InL (List items) -> pure items
+        InR (CompletionList{_items = List items}) -> pure items
 
 {- | /Creates/ a new text document. This is different from 'openDoc'
  as it sends a workspace/didChangeWatchedFiles notification letting the server
@@ -213,9 +220,9 @@ getCompletions doc pos = do
 -- createDoc
 --     :: FilePath
 --     -- ^ The path to the document to open, __relative to the root directory__.
---     -> T.Text
+--     -> Text
 --     -- ^ The text document's language identifier, e.g. @"haskell"@.
---     -> T.Text
+--     -> Text
 --     -- ^ The content of the text document to create.
 --     -> Session TextDocumentIdentifier
 --     -- ^ The identifier of the document just created.
@@ -231,7 +238,7 @@ getCompletions doc pos = do
 --         watchHits :: FileSystemWatcher -> Bool
 --         watchHits (FileSystemWatcher pattern kind) =
 --             -- If WatchKind is excluded, defaults to all true as per spec
---             fileMatches (T.unpack pattern) && createHits (fromMaybe (WatchKind True True True) kind)
+--             fileMatches (Text.unpack pattern) && createHits (fromMaybe (WatchKind True True True) kind)
 
 --         fileMatches pattern = Glob.match (Glob.compile pattern) relOrAbs
 --           where
@@ -265,17 +272,17 @@ getCompletions doc pos = do
 {- | Opens a text document that /exists on disk/, and sends a
  textDocument/didOpen notification to the server.
 -}
-openDoc :: FilePath -> T.Text -> Session TextDocumentIdentifier
+openDoc :: FilePath -> Text -> Session TextDocumentIdentifier
 openDoc file languageId = do
     rootDir <- asks rootDir
     let fp = rootDir </> file
-    contents <- liftIO $ T.readFile fp
+    contents <- liftIO $ Text.readFile fp
     openDoc' file languageId contents
 
 {- | This is a variant of `openDoc` that takes the file content as an argument.
  Use this is the file exists /outside/ of the current workspace.
 -}
-openDoc' :: FilePath -> T.Text -> T.Text -> Session TextDocumentIdentifier
+openDoc' :: FilePath -> Text -> Text -> Session TextDocumentIdentifier
 openDoc' file languageId contents = do
     rootDir <- asks rootDir
     let fp = rootDir </> file
@@ -314,7 +321,7 @@ getDocumentSymbols doc = do
         Left err -> throw (UnexpectedResponseError (SomeLspId $ fromJust rspLid) err)
 
 -- | The current text contents of a document.
-documentContents :: TextDocumentIdentifier -> Session T.Text
+documentContents :: TextDocumentIdentifier -> Session Text
 documentContents doc = do
     vfs <- asks vfs >>= liftIO . readTVarIO
     let Just file = vfs ^. vfsMap . at (toNormalizedUri (doc ^. uri))

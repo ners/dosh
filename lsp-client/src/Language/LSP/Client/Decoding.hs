@@ -7,7 +7,10 @@ module Language.LSP.Client.Decoding where
 import Control.Exception (catch, throw)
 import Data.Aeson (Result (Error, Success), Value, decode)
 import Data.Aeson.Types (parse)
-import Data.ByteString.Lazy.Char8 qualified as B
+import Data.ByteString.Lazy.Char8 qualified as LazyByteString
+import Data.ByteString.Lazy (LazyByteString)
+import Data.Functor
+import Data.Functor.Const
 import Data.Functor.Product (Product (Pair))
 import Data.IxMap (IxMap, emptyIxMap, insertIxMap, pickFromIxMap)
 import Data.Maybe (fromJust)
@@ -16,18 +19,16 @@ import Language.LSP.Types
 import System.IO (Handle, hGetLine)
 import System.IO.Error (isEOFError)
 import Prelude hiding (id)
-import Data.Functor.Const
-import Data.Functor
 
 {- | Fetches the next message bytes based on
  the Content-Length header
 -}
-getNextMessage :: Handle -> IO B.ByteString
+getNextMessage :: Handle -> IO LazyByteString
 getNextMessage h = do
     headers <- getHeaders h
     case read . init <$> lookup "Content-Length" headers of
         Nothing -> throw NoContentLengthHeader
-        Just size -> B.hGet h size
+        Just size -> LazyByteString.hGet h size
 
 getHeaders :: Handle -> IO [(String, String)]
 getHeaders h = do
@@ -71,7 +72,7 @@ updateRequestMap reqMap id callback = insertIxMap id callback reqMap
 --                ReqMess msg -> fromJust $ updateRequestMap acc (msg ^. id) m
 --        _ -> acc
 
-decodeFromServerMsg :: RequestMap -> B.ByteString -> (RequestMap, FromServerMessage, IO ())
+decodeFromServerMsg :: RequestMap -> LazyByteString -> (RequestMap, FromServerMessage, IO ())
 decodeFromServerMsg reqMap bytes = unP $ parse p obj
   where
     obj = fromJust $ decode bytes :: Value
