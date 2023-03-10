@@ -15,7 +15,7 @@ import Control.Concurrent.STM
 
 -- import System.FilePath.Glob qualified as Glob
 
-import Control.Exception (throw)
+import Control.Exception (SomeException, throw)
 import Control.Lens hiding (List)
 import Control.Monad (forever)
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -27,6 +27,8 @@ import Data.Coerce (coerce)
 import Data.Either (fromLeft)
 import Data.Functor (void)
 import Data.Generics.Labels ()
+import Data.HashMap.Strict (HashMap)
+import Data.HashMap.Strict qualified as HashMap
 import Data.IxMap (insertIxMap)
 import Data.Maybe (fromJust, fromMaybe)
 import Data.Text (Text)
@@ -38,6 +40,7 @@ import Language.LSP.Client.Exceptions (SessionException (UnexpectedResponseError
 import Language.LSP.Types
 import Language.LSP.Types.Capabilities (fullCaps)
 import Language.LSP.Types.Lens hiding (applyEdit, capabilities, executeCommand, id, message, rename, to)
+import Language.LSP.Types.Lens qualified
 import Language.LSP.VFS
     ( VFS
     , initVFS
@@ -47,13 +50,14 @@ import Language.LSP.VFS
     )
 import System.FilePath ((</>))
 import System.IO (Handle, stdin, stdout)
+import UnliftIO.Exception (catch)
 import Prelude
 
 data SessionState = SessionState
     { initialized :: TMVar InitializeResult
     , pendingRequests :: TVar RequestMap
     , lastRequestId :: TVar Int32
-    , lastDiagnostics :: TVar [Diagnostic]
+    , lastDiagnostics :: TVar (HashMap NormalizedUri [Diagnostic])
     , incoming :: TQueue LazyByteString
     -- ^ bytes that have been read from the input handle, but not yet parsed
     , outgoing :: TQueue LazyByteString
@@ -68,7 +72,7 @@ defaultSessionState vfs' = do
     initialized <- newEmptyTMVarIO
     pendingRequests <- newTVarIO newRequestMap
     lastRequestId <- newTVarIO 0
-    lastDiagnostics <- newTVarIO []
+    lastDiagnostics <- newTVarIO mempty
     outgoing <- newTQueueIO
     incoming <- newTQueueIO
     vfs <- newTVarIO vfs'
@@ -88,11 +92,11 @@ runSessionWithHandles :: Handle -> Handle -> Session a -> IO a
 runSessionWithHandles input output action = initVFS $ \vfs -> do
     initialState <- defaultSessionState vfs
     flip runReaderT initialState $ do
-        actionResult <- race action $ do
-            let send = do
+        actionResult <- race (catch @_ @SomeException action $ error . show) $ do
+            let send = flip (catch @_ @SomeException) (error . show) $ do
                     message <- asks outgoing >>= liftIO . atomically . readTQueue
                     liftIO $ LazyByteString.hPut output message
-            let receive = do
+            let receive = flip (catch @_ @SomeException) (error . show) $ do
                     serverBytes <- liftIO $ getNextMessage input
                     asks incoming >>= liftIO . atomically . (`writeTQueue` serverBytes)
                     (serverMessage, callback) <-
@@ -108,7 +112,11 @@ runSessionWithHandles input output action = initVFS $ \vfs -> do
                     case serverMessage of
                         FromServerMess STextDocumentPublishDiagnostics msg ->
                             asks lastDiagnostics
-                                >>= liftIO . atomically . flip writeTVar (coerce msg._params._diagnostics)
+                                >>= liftIO
+                                    . atomically
+                                    . flip
+                                        modifyTVar
+                                        (HashMap.insert (toNormalizedUri $ msg ^. params . uri) (coerce $ msg ^. params . diagnostics))
                         _ -> liftIO callback
             concurrently_ (forever send) (forever receive)
         pure $ fromLeft (error "send/receive thread should not exit!") actionResult
@@ -151,9 +159,10 @@ request method params = do
  Returns the result if successful.
 -}
 getResponseResult :: ResponseMessage m -> ResponseResult m
-getResponseResult response = either err id $ response._result
+getResponseResult response = either err id $ response ^. result
   where
-    err = throw . UnexpectedResponseError (SomeLspId $ fromJust $ response._id)
+    lid = SomeLspId $ fromJust $ response ^. Language.LSP.Types.Lens.id
+    err = throw . UnexpectedResponseError lid
 
 -- | Sends a notification to the server.
 sendNotification
@@ -188,8 +197,8 @@ initialize = do
 {- | Returns the current diagnostics that have been sent to the client.
  Note that this does not wait for more to come in.
 -}
-getDiagnostics :: Session [Diagnostic]
-getDiagnostics = asks lastDiagnostics >>= liftIO . readTVarIO
+getDiagnosticsFor :: TextDocumentIdentifier -> Session [Diagnostic]
+getDiagnosticsFor doc = asks lastDiagnostics >>= liftIO . readTVarIO <&> HashMap.lookupDefault [] (toNormalizedUri $ doc ^. uri)
 
 -- | Returns the completions for the position in the document.
 getCompletions :: TextDocumentIdentifier -> Position -> Session [CompletionItem]

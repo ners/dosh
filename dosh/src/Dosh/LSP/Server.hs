@@ -3,14 +3,13 @@
 
 module Dosh.LSP.Server where
 
-import Conduit (MonadCatch (catch))
 import Data.ByteString (hGetSome, hPut)
 import Data.ByteString.Builder.Extra (defaultChunkSize)
 import Data.Text.Encoding qualified as Text
 import Data.Text.IO qualified as Text
 import Development.IDE (Logger (Logger), Pretty (pretty), Recorder (..), WithPriority, cmapWithPrio, logWith)
 import Development.IDE.Main (Arguments (..), defaultArguments, defaultMain)
-import Dosh.Prelude hiding (catch)
+import Dosh.Prelude
 import Dosh.Util hiding (withTimeout)
 import HlsPlugins (idePlugins)
 import Language.LSP.Client qualified as LSP
@@ -22,7 +21,6 @@ import System.Process (createPipe)
 
 data Server t = Server
     { input :: LSP.Session () -> IO ()
-    , output :: Handle
     , error :: Event t SomeException
     , log :: Event t (WithPriority Text)
     }
@@ -36,7 +34,7 @@ server
 server = do
     (log, logTrigger) <- newTriggerEvent
     (error, reportError) <- newTriggerEvent
-    (input, output) <- liftIO $ do
+    (serverInput, serverOutput) <- liftIO $ do
         -- TODO: try to use Knob rather than pipes
         (inRead, inWrite) <- createPipe
         hSetBuffering inRead NoBuffering
@@ -63,14 +61,16 @@ server = do
         pure (inWrite, outRead)
     i <- newEmptyMVar
     o <- newEmptyMVar
-    liftIO $ forkIO $ LSP.runSessionWithHandles input output $ forever $ do
-        a <- takeMVar i
-        result <- a `catch` (liftIO . reportError)
-        putMVar o result
+    liftIO $
+        forkIO $
+            LSP.runSessionWithHandles serverOutput serverInput $
+                forever $ do
+                    a <- takeMVar i
+                    result <- a `catch` (liftIO . reportError)
+                    putMVar o result
     pure
         Server
             { input = putMVar i >>> (*> takeMVar o)
-            , output
             , error
             , log
             }

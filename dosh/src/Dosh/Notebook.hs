@@ -17,20 +17,17 @@ import Data.Text.IO qualified as Text
 import Data.These (These (..))
 import Data.Traversable (for)
 import Data.UUID (UUID)
-import Data.UUID qualified as UUID
 import Data.UUID.V4 qualified as UUID
-import Development.IDE (Pretty (pretty), WithPriority (..))
-import Development.IDE.Main (Log (..))
+import Development.IDE (WithPriority (..))
 import Dosh.Cell
 import Dosh.Cell qualified as Cell
 import Dosh.GHC.Client qualified as GHC
 import Dosh.LSP.Client qualified as LSP
 import Dosh.LSP.Document (ChunkMetadata, ChunkType (..), Document, newDocument)
-import Dosh.LSP.Document qualified as Document
+import Dosh.LSP.Document qualified as LSP.Document
 import Dosh.Prelude
 import Dosh.Util
 import GHC.Exts (IsList (toList))
-import Language.LSP.Test qualified as LSP
 import Language.LSP.Types qualified as LSP
 import Reflex hiding (Query, Response)
 import Reflex.Vty hiding (Query, Response)
@@ -74,7 +71,7 @@ createCell' f n =
   where
     c = f def{number = n.nextCellNumber}
     chunk =
-        Document.ChunkMetadata
+        LSP.Document.ChunkMetadata
             { cellId = c.uid
             , chunkIndex = 0
             , chunkType = Expression
@@ -162,7 +159,7 @@ handleCellEvent _ _ Cell{uid, firstLine, input} (UpdateCellCursor (moveCursor ->
     pure $
         n
             & #cells . ix uid . #input .~ newZipper
-            & #document %~ Document.goToLine newRow
+            & #document %~ LSP.Document.goToLine newRow
 handleCellEvent _ lsp c@Cell{uid, input} (UpdateCellInput update) n = do
     -- TODO: this is buggy!
     -- TODO: make LSP updates more efficient by sending smaller ranges
@@ -186,11 +183,11 @@ handleCellEvent _ lsp c@Cell{uid, input} (UpdateCellInput update) n = do
                    )
   where
     row = firstLine c + CZ.row input
-    col = CZ.col input
+    --col = CZ.col input
     newZipper = updateZipper update input
     newZipperT = CZ.toText newZipper
     newRow = firstLine c + CZ.row newZipper
-    newCol = CZ.col newZipper
+    --newCol = CZ.col newZipper
     -- TODO: can we leverage a finger tree to do this automatically?
     updateLineNumbers :: Notebook -> Notebook
     updateLineNumbers n = flip (`foldl'` n) (Seq.zip n.cellOrder.after $ Seq.drop 1 n.cellOrder.after) $
@@ -295,3 +292,4 @@ handleLspResponse
     -> m Notebook
 handleLspResponse LSP.DocumentContents{..} = pure . (#document . #contents .~ contents)
 handleLspResponse LSP.Diagnostics{..} = pure . (#document . #diagnostics .~ diagnostics)
+handleLspResponse LSP.Completions{..} = pure . (#document . #completions .~ completions)

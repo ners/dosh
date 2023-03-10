@@ -65,8 +65,6 @@ library
     build-depends:
         base,
         bytestring,
-        conduit,
-        conduit-parse,
         containers,
         data-default,
         exceptions,
@@ -77,7 +75,6 @@ library
         ghc-syntax-highlighter,
         ghcide,
         haskell-language-server,
-        hls-plugin-api,
         lens,
         lsp-client,
         lsp-types,
@@ -90,7 +87,6 @@ library
         template-haskell,
         text,
         these,
-        transformers,
         unordered-containers,
         uuid,
         vty
@@ -101,10 +97,11 @@ executable dosh
     hs-source-dirs:   app
     ghc-options:
         -threaded
+        -prof
         -rtsopts
         -with-rtsopts=-N
         -with-rtsopts=-T
-        -g3
+        ---with-rtsopts=-xc
     build-depends:
         dosh,
         reflex,

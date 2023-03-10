@@ -4,6 +4,7 @@ import Data.Sequence.Zipper (SeqZipper, backWhile, forwardWhile)
 import Data.UUID (UUID)
 import Development.IDE (Diagnostic, Uri)
 import Dosh.Prelude
+import Language.LSP.Types (CompletionItem)
 
 data ChunkType = Module | Declaration | Expression
     deriving stock (Show, Eq)
@@ -22,6 +23,7 @@ data Document = Document
     , chunks :: SeqZipper ChunkMetadata
     , contents :: Text
     , diagnostics :: [Diagnostic]
+    , completions :: [CompletionItem]
     , error :: Text
     }
     deriving stock (Generic, Show)
@@ -33,6 +35,7 @@ newDocument uri =
         , chunks = mempty
         , contents = mempty
         , diagnostics = mempty
+        , completions = mempty
         , error = mempty
         }
 

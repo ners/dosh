@@ -30,7 +30,6 @@ main = mainWidget $ do
     liftIO $ forkIO $ forever $ do
         threadDelay 1_000_000
         lspClient.request LSP.GetDocumentContents{uri = initialNotebook.document.uri}
-        -- lspClient.request LSP.WaitForDiagnostics
         lspClient.request LSP.GetDiagnostics{uri = initialNotebook.document.uri}
     initManager_ $ mdo
         dn :: Dynamic t Notebook <- holdDyn initialNotebook u

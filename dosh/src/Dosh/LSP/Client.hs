@@ -48,7 +48,7 @@ client server = do
 
 handleRequest :: (Response -> IO ()) -> Request -> Session ()
 handleRequest _ OpenDocument{..} =
-    sendNotification STextDocumentDidOpen $
+    LSP.sendNotification STextDocumentDidOpen $
         DidOpenTextDocumentParams
             TextDocumentItem
                 { _uri = uri
@@ -57,7 +57,7 @@ handleRequest _ OpenDocument{..} =
                 , _text = text
                 }
 handleRequest _ ChangeDocument{..} =
-    sendNotification STextDocumentDidChange $
+    LSP.sendNotification STextDocumentDidChange $
         DidChangeTextDocumentParams
             { _textDocument =
                 VersionedTextDocumentIdentifier
@@ -76,5 +76,5 @@ handleRequest _ ChangeDocument{..} =
 handleRequest respond GetDocumentContents{uri} = do
     contents <- LSP.documentContents $ TextDocumentIdentifier uri
     liftIO $ respond DocumentContents{..}
-handleRequest respond GetDiagnostics{..} = LSP.getDiagnostics (TextDocumentIdentifier uri) >>= liftIO . respond . Diagnostics
+handleRequest respond GetDiagnostics{..} = LSP.getDiagnosticsFor (TextDocumentIdentifier uri) >>= liftIO . respond . Diagnostics
 handleRequest respond GetCompletions{..} = LSP.getCompletions (TextDocumentIdentifier uri) position >>= liftIO . respond . Completions
