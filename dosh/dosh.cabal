@@ -131,4 +131,3 @@ test-suite dosh-test
         Dosh.GHC.LexerSpec,
         Dosh.GHC.ParserSpec,
         Test.Hspec.Expectations.Extra,
-    build-tools-depends: hspec-discover:hspec-discover

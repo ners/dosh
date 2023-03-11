@@ -7,8 +7,8 @@ module Language.LSP.Client.Decoding where
 import Control.Exception (catch, throw)
 import Data.Aeson (Result (Error, Success), Value, decode)
 import Data.Aeson.Types (parse)
-import Data.ByteString.Lazy.Char8 qualified as LazyByteString
 import Data.ByteString.Lazy (LazyByteString)
+import Data.ByteString.Lazy.Char8 qualified as LazyByteString
 import Data.Functor
 import Data.Functor.Const
 import Data.Functor.Product (Product (Pair))

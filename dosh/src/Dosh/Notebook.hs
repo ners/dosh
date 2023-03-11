@@ -183,11 +183,11 @@ handleCellEvent _ lsp c@Cell{uid, input} (UpdateCellInput update) n = do
                    )
   where
     row = firstLine c + CZ.row input
-    --col = CZ.col input
+    -- col = CZ.col input
     newZipper = updateZipper update input
     newZipperT = CZ.toText newZipper
     newRow = firstLine c + CZ.row newZipper
-    --newCol = CZ.col newZipper
+    -- newCol = CZ.col newZipper
     -- TODO: can we leverage a finger tree to do this automatically?
     updateLineNumbers :: Notebook -> Notebook
     updateLineNumbers n = flip (`foldl'` n) (Seq.zip n.cellOrder.after $ Seq.drop 1 n.cellOrder.after) $
