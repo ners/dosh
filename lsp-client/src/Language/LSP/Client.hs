@@ -61,7 +61,7 @@ data SessionState = SessionState
     , incoming :: TQueue LazyByteString
     -- ^ bytes that have been read from the input handle, but not yet parsed
     , outgoing :: TQueue LazyByteString
-    -- ^ messages that have been serialized but not yet written to the output handle
+    -- ^ messages that have been serialised but not yet written to the output handle
     , vfs :: TVar VFS
     -- ^ virtual, in-memory file system of the files known to the LSP
     , rootDir :: FilePath
