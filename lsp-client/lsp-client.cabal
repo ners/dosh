@@ -53,6 +53,7 @@ library
         Diff,
         Glob,
         aeson-pretty,
+        co-log-core,
         data-default,
         directory,
         filepath,

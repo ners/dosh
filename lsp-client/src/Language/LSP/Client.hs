@@ -5,29 +5,33 @@
 
 module Language.LSP.Client where
 
+import Colog.Core (LogAction (..), Severity (..), WithSeverity (..))
+import Control.Arrow ((>>>))
 import Control.Concurrent.Async.Lifted (concurrently_, race)
 import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
 import Control.Concurrent.STM
 import Control.Exception (SomeException, throw)
 import Control.Lens hiding (List)
-import Control.Monad (forever, when)
+import Control.Monad (forever, unless, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (ReaderT, asks, runReaderT)
-import Data.Aeson (FromJSON, ToJSON)
-import Data.ByteString.Lazy (LazyByteString)
+import Control.Monad.State (StateT, execState)
 import Data.ByteString.Lazy qualified as LazyByteString
 import Data.Coerce (coerce)
 import Data.Default (def)
 import Data.Either (fromLeft)
-import Data.Foldable (foldl')
+import Data.Foldable (foldl', foldr', forM_, toList)
+import Data.Function (on)
 import Data.Functor (void)
 import Data.Generics.Labels ()
 import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HashMap
 import Data.HashSet (HashSet)
+import Data.HashSet qualified as HashSet
 import Data.Hashable (Hashable)
 import Data.IxMap (insertIxMap)
-import Data.Maybe (fromJust, fromMaybe)
+import Data.List (groupBy, sortBy)
+import Data.Maybe (fromJust, fromMaybe, mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.IO qualified as Text
@@ -39,10 +43,15 @@ import Language.LSP.Client.Exceptions (SessionException (UnexpectedResponseError
 import Language.LSP.Types
 import Language.LSP.Types.Capabilities (ClientCapabilities, fullCaps)
 import Language.LSP.Types.Lens hiding (applyEdit, capabilities, executeCommand, id, message, rename, to)
-import Language.LSP.Types.Lens qualified
+import Language.LSP.Types.Lens qualified as LSP
 import Language.LSP.VFS
     ( VFS
+    , VfsLog
+    , VirtualFile (..)
+    , changeFromServerVFS
     , initVFS
+    , lsp_version
+    , openVFS
     , vfsMap
     , virtualFileText
     , virtualFileVersion
@@ -68,9 +77,7 @@ data SessionState = SessionState
     -- far
     , clientCapabilities :: ClientCapabilities
     , progressTokens :: TVar (HashSet ProgressToken)
-    , incoming :: TQueue LazyByteString
-    -- ^ Messages that have been read from the input handle, but not yet parsed
-    , outgoing :: TQueue LazyByteString
+    , outgoing :: TQueue FromClientMessage
     -- ^ Messages that have been serialised but not yet written to the output handle
     , vfs :: TVar VFS
     -- ^ Virtual, in-memory file system of the files known to the LSP
@@ -85,7 +92,6 @@ defaultSessionState vfs' = do
     lastDiagnostics <- newTVarIO mempty
     serverCapabilities <- newTVarIO mempty
     progressTokens <- newTVarIO mempty
-    incoming <- newTQueueIO
     outgoing <- newTQueueIO
     vfs <- newTVarIO vfs'
     pure
@@ -96,8 +102,6 @@ defaultSessionState vfs' = do
             }
 
 type Session = ReaderT SessionState IO
-
-data ServerResponse
 
 runSession :: Session a -> IO a
 runSession = runSessionWithHandles stdin stdout
@@ -112,10 +116,9 @@ runSessionWithHandles input output action = initVFS $ \vfs -> do
         actionResult <- race (catch @_ @SomeException action $ error . show) $ do
             let send = flip (catch @_ @SomeException) (error . show) $ do
                     message <- asks outgoing >>= liftIO . atomically . readTQueue
-                    liftIO $ LazyByteString.hPut output message
+                    liftIO $ LazyByteString.hPut output $ encode message
             let receive = flip (catch @_ @SomeException) (error . show) $ do
                     serverBytes <- liftIO $ getNextMessage input
-                    asks incoming >>= liftIO . atomically . (`writeTQueue` serverBytes)
                     (serverMessage, callback) <-
                         asks pendingRequests
                             >>= liftIO
@@ -126,21 +129,131 @@ runSessionWithHandles input output action = initVFS $ \vfs -> do
                                         let (newReqs, msg, callback) = decodeFromServerMsg reqs serverBytes
                                          in ((msg, callback), newReqs)
                                     )
-                    case serverMessage of
-                        FromServerMess STextDocumentPublishDiagnostics msg ->
-                            asks lastDiagnostics
-                                >>= liftIO
-                                    . atomically
-                                    . flip
-                                        modifyTVar
-                                        (HashMap.insert (toNormalizedUri $ msg ^. params . uri) (coerce $ msg ^. params . diagnostics))
-                        _ -> liftIO callback
+                    updateState serverMessage
+                    liftIO callback
             concurrently_ (forever send) (forever receive)
         pure $ fromLeft (error "send/receive thread should not exit!") actionResult
 
+-- extract Uri out from DocumentChange
+-- didn't put this in `lsp-types` because TH was getting in the way
+documentChangeUri :: DocumentChange -> Uri
+documentChangeUri (InL x) = x ^. textDocument . uri
+documentChangeUri (InR (InL x)) = x ^. uri
+documentChangeUri (InR (InR (InL x))) = x ^. oldUri
+documentChangeUri (InR (InR (InR x))) = x ^. uri
+
+updateState :: FromServerMessage -> Session ()
+updateState (FromServerMess SProgress req) = do
+    let update = asks progressTokens >>= liftIO . atomically . flip modifyTVar (HashSet.insert $ req ^. params . token)
+    case req ^. params . value of
+        Begin{} -> update
+        End{} -> update
+        Report{} -> pure ()
+updateState (FromServerMess SClientRegisterCapability req) = do
+    let List newRegs = req ^. params . registrations <&> \sr@(SomeRegistration r) -> (r ^. LSP.id, sr)
+    asks serverCapabilities >>= liftIO . atomically . flip modifyTVar (HashMap.union (HashMap.fromList newRegs))
+updateState (FromServerMess SClientUnregisterCapability req) = do
+    let List unRegs = req ^. params . unregisterations <&> (^. LSP.id)
+    asks serverCapabilities >>= liftIO . atomically . flip modifyTVar (flip (foldr' HashMap.delete) unRegs)
+updateState (FromServerMess STextDocumentPublishDiagnostics msg) =
+    asks lastDiagnostics
+        >>= liftIO
+            . atomically
+            . flip
+                modifyTVar
+                (HashMap.insert (toNormalizedUri $ msg ^. params . uri) (coerce $ msg ^. params . diagnostics))
+updateState (FromServerMess SWorkspaceApplyEdit r) = do
+    -- First, prefer the versioned documentChanges field
+    allChangeParams <- case r ^. params . edit . documentChanges of
+        Just (List cs) -> do
+            mapM_ (checkIfNeedsOpened . documentChangeUri) cs
+            -- replace the user provided version numbers with the VFS ones + 1
+            -- (technically we should check that the user versions match the VFS ones)
+            cs' <- traverseOf (traverse . _InL . textDocument) bumpNewestVersion cs
+            return $ mapMaybe getParamsFromDocumentChange cs'
+        -- Then fall back to the changes field
+        Nothing -> case r ^. params . edit . changes of
+            Just cs -> do
+                mapM_ checkIfNeedsOpened (HashMap.keys cs)
+                concat <$> mapM (uncurry getChangeParams) (HashMap.toList cs)
+            Nothing ->
+                error "WorkspaceEdit contains neither documentChanges nor changes!"
+
+    asks vfs >>= liftIO . atomically . flip modifyTVar (execState $ changeFromServerVFS logger r)
+
+    let groupedParams = groupBy (\a b -> a ^. textDocument == b ^. textDocument) allChangeParams
+        mergedParams = map mergeParams groupedParams
+
+    -- TODO: Don't do this when replaying a session
+    forM_ mergedParams (sendNotification STextDocumentDidChange)
+
+    -- Update VFS to new document versions
+    let sortedVersions = map (sortBy (compare `on` (^. textDocument . version))) groupedParams
+        latestVersions = map ((^. textDocument) . last) sortedVersions
+
+    forM_ latestVersions $ \(VersionedTextDocumentIdentifier uri v) ->
+        asks vfs
+            >>= liftIO
+                . atomically
+                . flip
+                    modifyTVar
+                    ( \vfs -> do
+                        let update (VirtualFile oldV file_ver t) = VirtualFile (fromMaybe oldV v) (file_ver + 1) t
+                         in vfs & vfsMap . ix (toNormalizedUri uri) %~ update
+                    )
+  where
+    logger :: LogAction (StateT VFS Identity) (WithSeverity VfsLog)
+    logger = LogAction $ \(WithSeverity msg sev) -> case sev of Error -> error $ show msg; _ -> pure ()
+    checkIfNeedsOpened uri = do
+        isOpen <- asks vfs >>= liftIO . readTVarIO <&> has (vfsMap . ix (toNormalizedUri uri))
+
+        -- if its not open, open it
+        unless isOpen $ do
+            let fp = fromJust $ uriToFilePath uri
+            contents <- liftIO $ Text.readFile fp
+            let item = TextDocumentItem (filePathToUri fp) "" 0 contents
+                msg = NotificationMessage "2.0" STextDocumentDidOpen (DidOpenTextDocumentParams item)
+            sendMessage $ fromClientNot msg
+            asks vfs >>= liftIO . atomically . flip modifyTVar (execState $ openVFS logger msg)
+
+    getParamsFromTextDocumentEdit :: TextDocumentEdit -> DidChangeTextDocumentParams
+    getParamsFromTextDocumentEdit (TextDocumentEdit docId (List edits)) = do
+        DidChangeTextDocumentParams docId (List $ map editToChangeEvent edits)
+
+    editToChangeEvent :: TextEdit |? AnnotatedTextEdit -> TextDocumentContentChangeEvent
+    editToChangeEvent (InR e) = TextDocumentContentChangeEvent (Just $ e ^. range) Nothing (e ^. newText)
+    editToChangeEvent (InL e) = TextDocumentContentChangeEvent (Just $ e ^. range) Nothing (e ^. newText)
+
+    getParamsFromDocumentChange :: DocumentChange -> Maybe DidChangeTextDocumentParams
+    getParamsFromDocumentChange (InL textDocumentEdit) = Just $ getParamsFromTextDocumentEdit textDocumentEdit
+    getParamsFromDocumentChange _ = Nothing
+
+    bumpNewestVersion (VersionedTextDocumentIdentifier uri _) = head <$> textDocumentVersions uri
+
+    -- For a uri returns an infinite list of versions [n,n+1,n+2,...]
+    -- where n is the current version
+    textDocumentVersions :: Uri -> Session [VersionedTextDocumentIdentifier]
+    textDocumentVersions uri = do
+        vfs <- asks vfs >>= liftIO . readTVarIO
+        let curVer = fromMaybe 0 $ vfs ^? vfsMap . ix (toNormalizedUri uri) . lsp_version
+        pure $ map (VersionedTextDocumentIdentifier uri . Just) [curVer + 1 ..]
+
+    textDocumentEdits uri edits = do
+        vers <- textDocumentVersions uri
+        pure $ zipWith (\v e -> TextDocumentEdit v (List [InL e])) vers edits
+
+    getChangeParams uri (List edits) = fmap getParamsFromTextDocumentEdit <$> textDocumentEdits uri (reverse edits)
+
+    mergeParams :: [DidChangeTextDocumentParams] -> DidChangeTextDocumentParams
+    mergeParams params =
+        let events = concat $ toList $ toList . (^. contentChanges) <$> params
+         in DidChangeTextDocumentParams (head params ^. textDocument) (List events)
+updateState _ = pure ()
+
 -- | Sends a request to the server, with a callback that fires when the response arrives.
 sendRequest
-    :: (FromJSON (SMethod m), ToJSON (MessageParams m))
+    :: forall m
+     . Message m ~ RequestMessage m
     => SClientMethod m
     -> MessageParams m
     -> (ResponseMessage m -> IO ())
@@ -155,15 +268,13 @@ sendRequest method params callback = do
                 ( \requestMap ->
                     fromMaybe requestMap $ insertIxMap reqId Callback{..} requestMap
                 )
-    let message = encode $ RequestMessage "2.0" reqId method params
-    asks outgoing >>= liftIO . atomically . (`writeTQueue` message)
+    sendMessage $ fromClientReq $ RequestMessage "2.0" reqId method params
     pure reqId
 
 -- | Sends a request to the server and waits for its response.
 request
-    :: ( FromJSON (SMethod m)
-       , ToJSON (MessageParams m)
-       )
+    :: forall m
+     . Message m ~ RequestMessage m
     => SClientMethod m
     -> MessageParams m
     -> Session (ResponseMessage m)
@@ -178,18 +289,20 @@ request method params = do
 getResponseResult :: ResponseMessage m -> ResponseResult m
 getResponseResult response = either err id $ response ^. result
   where
-    lid = SomeLspId $ fromJust $ response ^. Language.LSP.Types.Lens.id
+    lid = SomeLspId $ fromJust $ response ^. LSP.id
     err = throw . UnexpectedResponseError lid
 
 -- | Sends a notification to the server.
 sendNotification
-    :: ToJSON (MessageParams m)
-    => SClientMethod (m :: Method 'FromClient 'Notification)
+    :: forall (m :: Method 'FromClient 'Notification)
+     . Message m ~ NotificationMessage m
+    => SClientMethod m
     -> MessageParams m
     -> Session ()
-sendNotification method params = do
-    let message = encode $ NotificationMessage "2.0" method params
-    asks outgoing >>= liftIO . atomically . (`writeTQueue` message)
+sendNotification method params = sendMessage $ fromClientNot $ NotificationMessage "2.0" method params
+
+sendMessage :: FromClientMessage -> Session ()
+sendMessage msg = asks outgoing >>= liftIO . atomically . (`writeTQueue` msg)
 
 initialize :: Session ()
 initialize = do

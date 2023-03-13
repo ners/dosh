@@ -17,6 +17,7 @@ import Data.Text.IO qualified as Text
 import Data.These (These (..))
 import Data.Traversable (for)
 import Data.UUID (UUID)
+import Data.UUID qualified as UUID
 import Data.UUID.V4 qualified as UUID
 import Development.IDE (WithPriority (..))
 import Dosh.Cell
@@ -51,7 +52,7 @@ newNotebook = do
         , cellOrder = mempty
         , nextCellNumber = 1
         , disabled = False
-        , document = newDocument $ LSP.Uri "file:///home/ners/Projects/dosh/app/Main.hs"
+        , document = newDocument $ LSP.Uri $ "file:///" <> UUID.toText uid <> ".hs"
         }
         & createCell (#disabled .~ False)
 
