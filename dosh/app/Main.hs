@@ -23,7 +23,7 @@ main = mainWidget $ do
     liftIO $ do
         lspClient.request LSP.Initialize{}
         lspClient.request $
-            LSP.OpenDocument
+            LSP.CreateDocument
                 { uri = initialNotebook.document.uri
                 , language = "haskell"
                 , contents = ""

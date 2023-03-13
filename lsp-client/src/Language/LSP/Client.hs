@@ -285,11 +285,11 @@ createDoc file language contents = do
         clientCapsSupports =
             clientCaps
                 ^? workspace
-                    . _Just
-                    . didChangeWatchedFiles
-                    . _Just
-                    . dynamicRegistration
-                    . _Just
+                . _Just
+                . didChangeWatchedFiles
+                . _Just
+                . dynamicRegistration
+                . _Just
                 == Just True
         shouldSend = clientCapsSupports && foldl' (\acc r -> acc || regHits r) False regs
 

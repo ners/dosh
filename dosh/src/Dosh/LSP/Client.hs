@@ -15,7 +15,7 @@ import Prelude hiding (id)
 
 data Request
     = Initialize {}
-    | OpenDocument {uri :: Uri, language :: Text, contents :: Text}
+    | CreateDocument {uri :: Uri, language :: Text, contents :: Text}
     | ChangeDocument {uri :: Uri, range :: Range, contents :: Text}
     | GetDocumentContents {uri :: Uri}
     | GetDiagnostics {uri :: Uri}
@@ -49,7 +49,7 @@ client server = do
 
 handleRequest :: (Response -> IO ()) -> Request -> Session ()
 handleRequest _ Initialize{} = LSP.initialize
-handleRequest _ OpenDocument{..} = void $ LSP.createDoc (show uri) language contents
+handleRequest _ CreateDocument{..} = void $ LSP.createDoc (show uri) language contents
 handleRequest _ ChangeDocument{..} =
     LSP.sendNotification STextDocumentDidChange $
         DidChangeTextDocumentParams
