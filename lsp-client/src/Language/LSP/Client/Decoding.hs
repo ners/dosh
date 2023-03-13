@@ -72,8 +72,8 @@ updateRequestMap reqMap id callback = insertIxMap id callback reqMap
 --                ReqMess msg -> fromJust $ updateRequestMap acc (msg ^. id) m
 --        _ -> acc
 
-decodeFromServerMsg :: RequestMap -> LazyByteString -> (RequestMap, FromServerMessage, IO ())
-decodeFromServerMsg reqMap bytes = unP $ parse p obj
+decodeFromServerMsg :: LazyByteString -> RequestMap -> ((FromServerMessage, IO ()), RequestMap)
+decodeFromServerMsg bytes reqMap = unP $ parse p obj
   where
     obj = fromJust $ decode bytes :: Value
     p = parseServerMessage $ \(lid :: LspId m) ->
@@ -82,8 +82,8 @@ decodeFromServerMsg reqMap bytes = unP $ parse p obj
     -- case maybeCallback of
     --       Nothing -> Nothing
     --       Just m -> Just (m, Pair m (Const newMap))
-    unP (Success (FromServerMess m msg)) = (reqMap, FromServerMess m msg, pure ())
-    unP (Success (FromServerRsp (Pair c (Const newMap)) msg)) = (newMap, FromServerRsp c.method msg, c.callback msg)
+    unP (Success (FromServerMess m msg)) = ((FromServerMess m msg, pure ()), reqMap)
+    unP (Success (FromServerRsp (Pair c (Const newMap)) msg)) = ((FromServerRsp c.method msg, c.callback msg), newMap)
     unP (Error e) = error $ "Error decoding " <> show obj <> " :" <> e
 
 {-

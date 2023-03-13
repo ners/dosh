@@ -76,7 +76,8 @@ library
         Language.LSP.Client.Compat,
         Language.LSP.Client.Decoding,
         Language.LSP.Client.Encoding,
-        Language.LSP.Client.Exceptions
+        Language.LSP.Client.Exceptions,
+        Language.LSP.Client.Session
 
 test-suite spec
     import:           common
