@@ -12,6 +12,7 @@ import Data.Maybe (fromJust)
 import Language.LSP.Client
 import Language.LSP.Client.Decoding (getNextMessage)
 import Language.LSP.Client.Encoding (encode)
+import Language.LSP.Client.Session
 import Language.LSP.Types
 import System.IO
 import System.Process (createPipe)

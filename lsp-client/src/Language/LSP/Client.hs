@@ -33,7 +33,7 @@ runSessionWithHandles input output action = initVFS $ \vfs -> do
                     (serverMessage, callback) <-
                         asks pendingRequests
                             >>= liftIO . atomically . flip stateTVar (decodeFromServerMsg serverBytes)
-                    updateState serverMessage
+                    handleServerMessage serverMessage
                     liftIO callback
             concurrently_ (forever send) (forever receive)
         pure $ fromLeft (error "send/receive thread should not exit!") actionResult

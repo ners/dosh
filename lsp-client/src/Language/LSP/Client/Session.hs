@@ -8,7 +8,7 @@ import Colog.Core (LogAction (..), Severity (..), WithSeverity (..))
 import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
 import Control.Concurrent.STM
 import Control.Exception (throw)
-import Control.Lens hiding (List)
+import Control.Lens hiding (Empty, List)
 import Control.Monad (unless, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (ReaderT, asks)
@@ -102,27 +102,27 @@ documentChangeUri (InR (InL x)) = x ^. uri
 documentChangeUri (InR (InR (InL x))) = x ^. oldUri
 documentChangeUri (InR (InR (InR x))) = x ^. uri
 
-updateState :: FromServerMessage -> Session ()
-updateState (FromServerMess SProgress req) = do
+handleServerMessage :: FromServerMessage -> Session ()
+handleServerMessage (FromServerMess SProgress req) = do
     let update = asks progressTokens >>= liftIO . atomically . flip modifyTVar (HashSet.insert $ req ^. params . token)
     case req ^. params . value of
         Begin{} -> update
         End{} -> update
         Report{} -> pure ()
-updateState (FromServerMess SClientRegisterCapability req) = do
+handleServerMessage (FromServerMess SClientRegisterCapability req) = do
     let List newRegs = req ^. params . registrations <&> \sr@(SomeRegistration r) -> (r ^. LSP.id, sr)
     asks serverCapabilities >>= liftIO . atomically . flip modifyTVar (HashMap.union (HashMap.fromList newRegs))
-updateState (FromServerMess SClientUnregisterCapability req) = do
+handleServerMessage (FromServerMess SClientUnregisterCapability req) = do
     let List unRegs = req ^. params . unregisterations <&> (^. LSP.id)
     asks serverCapabilities >>= liftIO . atomically . flip modifyTVar (flip (foldr' HashMap.delete) unRegs)
-updateState (FromServerMess STextDocumentPublishDiagnostics msg) =
+handleServerMessage (FromServerMess STextDocumentPublishDiagnostics msg) =
     asks lastDiagnostics
         >>= liftIO
             . atomically
             . flip
                 modifyTVar
                 (HashMap.insert (toNormalizedUri $ msg ^. params . uri) (coerce $ msg ^. params . diagnostics))
-updateState (FromServerMess SWorkspaceApplyEdit r) = do
+handleServerMessage (FromServerMess SWorkspaceApplyEdit r) = do
     -- First, prefer the versioned documentChanges field
     allChangeParams <- case r ^. params . edit . documentChanges of
         Just (List cs) -> do
@@ -161,6 +161,13 @@ updateState (FromServerMess SWorkspaceApplyEdit r) = do
                         let update (VirtualFile oldV file_ver t) = VirtualFile (fromMaybe oldV v) (file_ver + 1) t
                          in vfs & vfsMap . ix (toNormalizedUri uri) %~ update
                     )
+    sendResponse
+        r
+        ApplyWorkspaceEditResponseBody
+            { _applied = True
+            , _failureReason = Nothing
+            , _failedChange = Nothing
+            }
   where
     logger :: LogAction (StateT VFS Identity) (WithSeverity VfsLog)
     logger = LogAction $ \(WithSeverity msg sev) -> case sev of Error -> error $ show msg; _ -> pure ()
@@ -208,7 +215,8 @@ updateState (FromServerMess SWorkspaceApplyEdit r) = do
     mergeParams params =
         let events = concat $ toList $ toList . (^. contentChanges) <$> params
          in DidChangeTextDocumentParams (head params ^. textDocument) (List events)
-updateState _ = pure ()
+handleServerMessage (FromServerMess SWindowWorkDoneProgressCreate req) = sendResponse req Empty
+handleServerMessage _ = pure ()
 
 overTVar :: (a -> a) -> TVar a -> STM a
 overTVar f var = stateTVar var (\x -> (f x, f x))
@@ -233,6 +241,13 @@ sendRequest method params callback = do
                 )
     sendMessage $ fromClientReq $ RequestMessage "2.0" reqId method params
     pure reqId
+
+sendResponse
+    :: forall (m :: Method 'FromServer 'Request)
+     . RequestMessage m
+    -> ResponseResult m
+    -> Session ()
+sendResponse req res = sendMessage $ FromClientRsp (req ^. LSP.method) $ ResponseMessage (req ^. jsonrpc) (Just $ req ^. LSP.id) (Right res)
 
 -- | Sends a request to the server and waits for its response.
 request
@@ -361,11 +376,11 @@ createDoc file language contents = do
         clientCapsSupports =
             clientCaps
                 ^? workspace
-                    . _Just
-                    . didChangeWatchedFiles
-                    . _Just
-                    . dynamicRegistration
-                    . _Just
+                . _Just
+                . didChangeWatchedFiles
+                . _Just
+                . dynamicRegistration
+                . _Just
                 == Just True
         shouldSend = clientCapsSupports && foldl' (\acc r -> acc || regHits r) False regs
 
