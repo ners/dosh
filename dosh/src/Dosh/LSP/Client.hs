@@ -7,8 +7,8 @@ module Dosh.LSP.Client where
 import Development.IDE (WithPriority)
 import Dosh.LSP.Server (Server (..))
 import Dosh.Prelude hiding (List)
-import Language.LSP.Client (Session)
-import Language.LSP.Client qualified as LSP
+import Language.LSP.Client.Session (Session)
+import Language.LSP.Client.Session qualified as LSP
 import Language.LSP.Types hiding (Initialize)
 import Reflex hiding (Request, Response)
 import Prelude hiding (id)

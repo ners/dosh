@@ -18,9 +18,10 @@ import Reflex
     , TriggerEvent (newTriggerEvent)
     )
 import System.Process (createPipe)
+import Language.LSP.Client.Session (Session)
 
 data Server t = Server
-    { input :: LSP.Session () -> IO ()
+    { input :: Session () -> IO ()
     , error :: Event t SomeException
     , log :: Event t (WithPriority Text)
     }
