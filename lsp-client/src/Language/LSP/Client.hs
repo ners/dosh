@@ -262,7 +262,7 @@ createDoc
     -- ^ The content of the text document to create.
     -> Session TextDocumentIdentifier
     -- ^ The identifier of the document just created.
-createDoc file languageId contents = do
+createDoc file language contents = do
     serverCaps <- asks serverCapabilities >>= liftIO . readTVarIO
     clientCaps <- asks clientCapabilities
     rootDir <- asks rootDir
@@ -275,25 +275,9 @@ createDoc file languageId contents = do
         watchHits :: FileSystemWatcher -> Bool
         watchHits (FileSystemWatcher pattern kind) =
             -- If WatchKind is excluded, defaults to all true as per spec
-            fileMatches (Text.unpack pattern)
-                && createHits
-                    ( fromMaybe
-                        WatchKind
-                            { _watchCreate = True
-                            , _watchChange = True
-                            , _watchDelete = True
-                            }
-                        kind
-                    )
+            fileMatches (Text.unpack pattern) && maybe True (view watchCreate) kind
 
-        fileMatches pattern = Glob.match (Glob.compile pattern) relOrAbs
-          where
-            -- If the pattern is absolute then match against the absolute fp
-            relOrAbs
-                | isAbsolute pattern = absFile
-                | otherwise = file
-
-        createHits (WatchKind create _ _) = create
+        fileMatches pattern = Glob.match (Glob.compile pattern) (if isAbsolute pattern then absFile else file)
 
         regHits :: Registration 'WorkspaceDidChangeWatchedFiles -> Bool
         regHits reg = foldl' (\acc w -> acc || watchHits w) False (reg ^. registerOptions . watchers)
@@ -313,27 +297,27 @@ createDoc file languageId contents = do
         sendNotification SWorkspaceDidChangeWatchedFiles $
             DidChangeWatchedFilesParams $
                 List [FileEvent (filePathToUri (rootDir </> file)) FcCreated]
-    openDoc' file languageId contents
+    openDoc' file language contents
 
 {- | Opens a text document that /exists on disk/, and sends a
  textDocument/didOpen notification to the server.
 -}
 openDoc :: FilePath -> Text -> Session TextDocumentIdentifier
-openDoc file languageId = do
+openDoc file language = do
     rootDir <- asks rootDir
     let fp = rootDir </> file
     contents <- liftIO $ Text.readFile fp
-    openDoc' file languageId contents
+    openDoc' file language contents
 
 {- | This is a variant of `openDoc` that takes the file content as an argument.
  Use this is the file exists /outside/ of the current workspace.
 -}
 openDoc' :: FilePath -> Text -> Text -> Session TextDocumentIdentifier
-openDoc' file languageId contents = do
+openDoc' file language contents = do
     rootDir <- asks rootDir
     let fp = rootDir </> file
         uri = filePathToUri fp
-        item = TextDocumentItem uri languageId 0 contents
+        item = TextDocumentItem uri language 0 contents
     sendNotification STextDocumentDidOpen (DidOpenTextDocumentParams item)
     pure $ TextDocumentIdentifier uri
 

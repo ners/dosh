@@ -172,7 +172,7 @@ handleCellEvent _ lsp c@Cell{uid, input} (UpdateCellInput update) n = do
                         { _start = LSP.Position{_line = fromIntegral $ firstLine c, _character = 0}
                         , _end = LSP.Position{_line = fromIntegral $ lastLine c, _character = 0}
                         }
-                , text = newZipperT
+                , contents = newZipperT
                 }
     pure $
         n
@@ -213,7 +213,7 @@ handleCellEvent ghc lsp c@Cell{uid, input} EvaluateCell n = do
                         { _start = LSP.Position{_line = fromIntegral $ lastLine c + 1, _character = 0}
                         , _end = LSP.Position{_line = fromIntegral $ lastLine c + 1, _character = 0}
                         }
-                , text = "\n\n"
+                , contents = "\n\n"
                 }
     let content = CZ.toText input
     liftIO $ ghc.request GHC.Evaluate{uid, content}

@@ -21,11 +21,12 @@ main = mainWidget $ do
     lspClient <- LSP.client lspServer
     initialNotebook <- newNotebook
     liftIO $ do
-        lspClient.request
+        lspClient.request LSP.Initialize{}
+        lspClient.request $
             LSP.OpenDocument
                 { uri = initialNotebook.document.uri
                 , language = "haskell"
-                , text = ""
+                , contents = ""
                 }
     liftIO $ forkIO $ forever $ do
         threadDelay 1_000_000

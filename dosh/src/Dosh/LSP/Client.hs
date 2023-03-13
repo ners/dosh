@@ -9,13 +9,14 @@ import Dosh.LSP.Server (Server (..))
 import Dosh.Prelude hiding (List)
 import Language.LSP.Client (Session)
 import Language.LSP.Client qualified as LSP
-import Language.LSP.Types
+import Language.LSP.Types hiding (Initialize)
 import Reflex hiding (Request, Response)
 import Prelude hiding (id)
 
 data Request
-    = OpenDocument {uri :: Uri, language :: Text, text :: Text}
-    | ChangeDocument {uri :: Uri, range :: Range, text :: Text}
+    = Initialize {}
+    | OpenDocument {uri :: Uri, language :: Text, contents :: Text}
+    | ChangeDocument {uri :: Uri, range :: Range, contents :: Text}
     | GetDocumentContents {uri :: Uri}
     | GetDiagnostics {uri :: Uri}
     | GetCompletions {uri :: Uri, position :: Position}
@@ -47,15 +48,8 @@ client server = do
     pure Client{onError = server.error, onLog = server.log, ..}
 
 handleRequest :: (Response -> IO ()) -> Request -> Session ()
-handleRequest _ OpenDocument{..} =
-    LSP.sendNotification STextDocumentDidOpen $
-        DidOpenTextDocumentParams
-            TextDocumentItem
-                { _uri = uri
-                , _languageId = language
-                , _version = 0
-                , _text = text
-                }
+handleRequest _ Initialize{} = LSP.initialize
+handleRequest _ OpenDocument{..} = void $ LSP.createDoc (show uri) language contents
 handleRequest _ ChangeDocument{..} =
     LSP.sendNotification STextDocumentDidChange $
         DidChangeTextDocumentParams
@@ -69,7 +63,7 @@ handleRequest _ ChangeDocument{..} =
                     [ TextDocumentContentChangeEvent
                         { _range = Just range
                         , _rangeLength = Nothing
-                        , _text = text
+                        , _text = contents
                         }
                     ]
             }
