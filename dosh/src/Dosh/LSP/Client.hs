@@ -12,10 +12,11 @@ import Language.LSP.Client.Session qualified as LSP
 import Language.LSP.Types hiding (Initialize)
 import Reflex hiding (Request, Response)
 import Prelude hiding (id)
+import Dosh.LSP.Document
 
 data Request
     = Initialize {}
-    | CreateDocument {uri :: Uri, language :: Text, contents :: Text}
+    | CreateDocument {doc :: Document}
     | ChangeDocument {uri :: Uri, range :: Range, contents :: Text}
     | GetDocumentContents {uri :: Uri}
     | GetDiagnostics {uri :: Uri}
@@ -49,7 +50,7 @@ client server = do
 
 handleRequest :: (Response -> IO ()) -> Request -> Session ()
 handleRequest _ Initialize{} = LSP.initialize
-handleRequest _ CreateDocument{..} = void $ LSP.createDoc (show uri) language contents
+handleRequest _ CreateDocument{doc = Document{..}} = void $ LSP.createDoc (show uri) language contents
 handleRequest _ ChangeDocument{..} =
     LSP.sendNotification STextDocumentDidChange $
         DidChangeTextDocumentParams

@@ -39,12 +39,18 @@ data CodeZipper t = CodeZipper
     , tokensBefore :: [Token t]
     , tokensAfter :: [Token t]
     }
-    deriving stock (Eq, Show)
+    deriving stock (Generic, Eq, Show)
+
+instance Eq t => Monoid (CodeZipper t) where
+    mempty = empty
+
+instance Eq t => Semigroup (CodeZipper t) where
+    a <> b = a{linesAfter = linesAfter a <> allLines b}
 
 empty :: CodeZipper t
 empty =
     CodeZipper
-        { language = ""
+        { language = mempty
         , linesBefore = mempty
         , linesAfter = mempty
         , tokensBefore = mempty

@@ -20,11 +20,11 @@ data ChunkMetadata = ChunkMetadata
 
 data Document = Document
     { uri :: Uri
+    , language :: Text
     , chunks :: SeqZipper ChunkMetadata
     , contents :: Text
     , diagnostics :: [Diagnostic]
     , completions :: [CompletionItem]
-    , error :: Text
     }
     deriving stock (Generic, Show)
 
@@ -32,11 +32,11 @@ newDocument :: Uri -> Document
 newDocument uri =
     Document
         { uri
+        , language = mempty
         , chunks = mempty
         , contents = mempty
         , diagnostics = mempty
         , completions = mempty
-        , error = mempty
         }
 
 goToLine :: Int -> Document -> Document

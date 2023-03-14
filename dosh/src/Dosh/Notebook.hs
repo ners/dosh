@@ -13,13 +13,11 @@ import Data.Sequence qualified as Seq
 import Data.Sequence.Zipper (SeqZipper (..))
 import Data.Sequence.Zipper qualified as SZ
 import Data.Text.CodeZipper qualified as CZ
-import Data.Text.IO qualified as Text
 import Data.These (These (..))
 import Data.Traversable (for)
 import Data.UUID (UUID)
 import Data.UUID qualified as UUID
 import Data.UUID.V4 qualified as UUID
-import Development.IDE (WithPriority (..))
 import Dosh.Cell
 import Dosh.Cell qualified as Cell
 import Dosh.GHC.Client qualified as GHC
@@ -43,16 +41,17 @@ data Notebook = Notebook
     }
     deriving stock (Generic, Show)
 
-newNotebook :: MonadIO m => m Notebook
-newNotebook = do
+newNotebook :: MonadIO m => Text -> Text -> m Notebook
+newNotebook language ext = do
     uid <- liftIO UUID.nextRandom
+    let uri = LSP.Uri $ "file:///" <> UUID.toText uid <> "." <> ext
     Notebook
         { uid
         , cells = mempty
         , cellOrder = mempty
         , nextCellNumber = 1
         , disabled = False
-        , document = newDocument $ LSP.Uri $ "file:///" <> UUID.toText uid <> ".hs"
+        , document = newDocument uri & #language .~ language
         }
         & createCell (#disabled .~ False)
 
@@ -70,7 +69,8 @@ createCell' f n =
         & #cellOrder %~ (<> SZ.singleton c.uid)
         & #document . #chunks %~ (<> SZ.singleton chunk)
   where
-    c = f def{number = n.nextCellNumber}
+    c = f def & #number .~ n.nextCellNumber
+              & #input . #language .~ n.document.language
     chunk =
         LSP.Document.ChunkMetadata
             { cellId = c.uid
@@ -120,30 +120,12 @@ notebook ghc lsp n = do
                     This n -> pure n
                     That r -> handleGhcResponse r n
                     These n r -> handleGhcResponse r n
-    lspUpdates :: Event t Notebook <-
-        performEvent $
-            flip (`alignEventWithMaybe` ghcUpdates) lsp.onResponse $
-                Just . \case
-                    This n -> pure n
-                    That r -> handleLspResponse r n
-                    These n r -> handleLspResponse r n
-    lspErrors <-
-        performEvent $
-            flip (`alignEventWithMaybe` lspUpdates) lsp.onError $
-                Just . \case
-                    This n -> pure n
-                    That e -> pure $ n & #document . #error %~ (<> tshow e <> "\n")
-                    These n e -> pure $ n & #document . #error %~ (<> tshow e <> "\n")
     performEvent $
-        flip (`alignEventWithMaybe` lspErrors) lsp.onLog $
+        flip (`alignEventWithMaybe` ghcUpdates) lsp.onResponse $
             Just . \case
                 This n -> pure n
-                That l -> do
-                    liftIO $ Text.appendFile "hls-log.log" $ l.payload <> "\n"
-                    pure n
-                These n l -> do
-                    liftIO $ Text.appendFile "hls-log.log" $ l.payload <> "\n"
-                    pure n
+                That r -> handleLspResponse r n
+                These n r -> handleLspResponse r n
 
 handleCellEvent
     :: forall t m

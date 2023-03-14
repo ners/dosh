@@ -41,7 +41,7 @@ type SourceLine = CZ.SourceLine TokenType
 
 instance Pretty TokenType where
     plain code = [[CZ.Token{tokenType = NormalTok, ..}] | tokenContent <- Text.splitOn "\n" code]
-    pretty "Haskell" = ghcHighlight
+    pretty (Text.toLower -> "haskell") = ghcHighlight
     pretty lang = skylight lang
 
 plainToken :: Text -> Token
@@ -100,9 +100,6 @@ instance Reflex t => Default (CodeInputConfig t) where
 
 data CodeInput t = CodeInput
     { _codeInput_value :: Dynamic t Text
-    , _codeInput_zipper :: Dynamic t (CodeZipper TokenType)
-    , _codeInput_displayLines :: Dynamic t (DisplayLines V.Attr)
-    , _codeInput_userInput :: Event t (CodeZipper TokenType)
     , _codeInput_lines :: Dynamic t Int
     }
 
@@ -146,7 +143,9 @@ codeInput cfg = mdo
             let c = if cfg._codeInputConfig_showCursor then (`V.withStyle` V.reverseVideo) else id
              in displayCodeLines w attr c s
     attrDyn <- holdDyn attr0 $ pushAlways (\_ -> sample bt) (updated rowInputDyn)
-    let rows = ffor2 attrDyn rowInputDyn toDisplayLines
+    let rows :: Dynamic t (DisplayLines V.Attr)
+        rows = ffor2 attrDyn rowInputDyn toDisplayLines
+        img :: Dynamic t [V.Image]
         img = images . _displayLines_spans <$> rows
     y <- holdUniqDyn $ fmap snd _displayLines_cursorPos <$> rows
     let newScrollTop :: Int -> (Int, Int) -> Int
@@ -160,10 +159,7 @@ codeInput cfg = mdo
     return $
         CodeInput
             { _codeInput_value = CZ.toText <$> v
-            , _codeInput_zipper = v
-            , _codeInput_displayLines = rows
-            , _codeInput_userInput = attachWith (&) (current v) valueChangedByUI
-            , _codeInput_lines = CZ.lines <$> v
+            , _codeInput_lines = length <$> img
             }
 
 {- | Given a width and a 'TextZipper', produce a list of display lines

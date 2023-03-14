@@ -44,7 +44,7 @@ instance Default Cell where
             { uid = UUID.nil
             , number = 0
             , firstLine = 0
-            , input = CZ.empty{CZ.language = "Haskell"}
+            , input = mempty
             , output = Nothing
             , error = Nothing
             , disabled = True
@@ -108,10 +108,10 @@ cell
     => Cell
     -> m (Event t CellEvent)
 cell c = do
-    (cellEvent, triggerCellEvent) <- newTriggerEvent @t @m @CellEvent
     let inPrompt = mconcat [if c.evaluated then "*" else " ", "In[", tshow c.number, "]: "]
     let outPrompt = "Out[" <> tshow c.number <> "]: "
     let errPrompt = "Err[" <> tshow c.number <> "]: "
+    (cellEvent, triggerCellEvent) <- newTriggerEvent
     unless c.disabled $ void $ do
         vtyInput :: Event t VtyEvent <- Reflex.Vty.input
         dh :: Dynamic t Int <- displayHeight

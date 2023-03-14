@@ -1,5 +1,5 @@
-{-# LANGUAGE LambdaCase #-}
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 module Dosh.Util where
 
@@ -10,6 +10,7 @@ import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
+import Development.IDE.Types.Logger
 import Dosh.Prelude
 import Graphics.Vty (Key (..), Modifier (..))
 import Reflex
@@ -100,3 +101,6 @@ newlined t
 
 withTimeout :: (MonadUnliftIO m, MonadFail m) => Int -> m a -> m a
 withTimeout = ((maybe (fail "Timeout exceeded") pure =<<) .) . timeout
+
+instance Show a => Show (WithPriority a) where
+    show = show . payload
