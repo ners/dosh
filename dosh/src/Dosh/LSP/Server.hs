@@ -13,12 +13,12 @@ import Dosh.Prelude
 import Dosh.Util hiding (withTimeout)
 import HlsPlugins (idePlugins)
 import Language.LSP.Client qualified as LSP
+import Language.LSP.Client.Session (Session)
 import Reflex
     ( Reflex (Event)
     , TriggerEvent (newTriggerEvent)
     )
 import System.Process (createPipe)
-import Language.LSP.Client.Session (Session)
 
 data Server t = Server
     { input :: Session () -> IO ()

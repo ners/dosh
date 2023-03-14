@@ -142,14 +142,14 @@ handleServerMessage (FromServerMess SWorkspaceApplyEdit r) = do
     asks vfs >>= liftIO . atomically . flip modifyTVar (execState $ changeFromServerVFS logger r)
 
     let groupedParams = groupBy (\a b -> a ^. textDocument == b ^. textDocument) allChangeParams
-        mergedParams = map mergeParams groupedParams
+        mergedParams = mergeParams <$> groupedParams
 
     -- TODO: Don't do this when replaying a session
     forM_ mergedParams (sendNotification STextDocumentDidChange)
 
     -- Update VFS to new document versions
-    let sortedVersions = map (sortBy (compare `on` (^. textDocument . version))) groupedParams
-        latestVersions = map ((^. textDocument) . last) sortedVersions
+    let sortedVersions = sortBy (compare `on` (^. textDocument . version)) <$> groupedParams
+        latestVersions = (^. textDocument) . last <$> sortedVersions
 
     forM_ latestVersions $ \(VersionedTextDocumentIdentifier uri v) ->
         asks vfs
@@ -185,7 +185,7 @@ handleServerMessage (FromServerMess SWorkspaceApplyEdit r) = do
 
     getParamsFromTextDocumentEdit :: TextDocumentEdit -> DidChangeTextDocumentParams
     getParamsFromTextDocumentEdit (TextDocumentEdit docId (List edits)) = do
-        DidChangeTextDocumentParams docId (List $ map editToChangeEvent edits)
+        DidChangeTextDocumentParams docId (List $ editToChangeEvent <$> edits)
 
     editToChangeEvent :: TextEdit |? AnnotatedTextEdit -> TextDocumentContentChangeEvent
     editToChangeEvent (InR e) = TextDocumentContentChangeEvent (Just $ e ^. range) Nothing (e ^. newText)
@@ -203,7 +203,7 @@ handleServerMessage (FromServerMess SWorkspaceApplyEdit r) = do
     textDocumentVersions uri = do
         vfs <- asks vfs >>= liftIO . readTVarIO
         let curVer = fromMaybe 0 $ vfs ^? vfsMap . ix (toNormalizedUri uri) . lsp_version
-        pure $ map (VersionedTextDocumentIdentifier uri . Just) [curVer + 1 ..]
+        pure $ VersionedTextDocumentIdentifier uri . Just <$> [curVer + 1 ..]
 
     textDocumentEdits uri edits = do
         vers <- textDocumentVersions uri
@@ -272,7 +272,7 @@ getResponseResult response = either err id $ response ^. result
 
 -- | Sends a notification to the server.
 sendNotification
-    :: forall (m :: Method 'FromClient 'Notification)
+    :: forall m
      . Message m ~ NotificationMessage m
     => SClientMethod m
     -> MessageParams m
@@ -376,11 +376,11 @@ createDoc file language contents = do
         clientCapsSupports =
             clientCaps
                 ^? workspace
-                . _Just
-                . didChangeWatchedFiles
-                . _Just
-                . dynamicRegistration
-                . _Just
+                    . _Just
+                    . didChangeWatchedFiles
+                    . _Just
+                    . dynamicRegistration
+                    . _Just
                 == Just True
         shouldSend = clientCapsSupports && foldl' (\acc r -> acc || regHits r) False regs
 

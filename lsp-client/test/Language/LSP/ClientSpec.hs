@@ -3,16 +3,23 @@ module Language.LSP.ClientSpec where
 import Control.Arrow ((>>>))
 import Control.Exception
 import Control.Monad
-import Control.Monad.Extra ()
+import Control.Monad.Extra (whileM, whileJustM, whenMaybeM)
 import Data.Aeson ((.:))
 import Data.Aeson qualified as Aeson
 import Data.Aeson.Types (parseMaybe)
 import Data.ByteString.Lazy qualified as LazyByteString
 import Data.Maybe (fromJust)
+import Data.Text qualified as Text
+import Data.UUID qualified as UUID
+import Data.UUID.V4 qualified as UUID
+import Development.IDE
+import Development.IDE.Main
+import HlsPlugins (idePlugins)
 import Language.LSP.Client
 import Language.LSP.Client.Decoding (getNextMessage)
 import Language.LSP.Client.Encoding (encode)
 import Language.LSP.Client.Session
+import Language.LSP.Client.Session qualified as LSP
 import Language.LSP.Types
 import System.IO
 import System.Process (createPipe)
@@ -23,6 +30,9 @@ import Test.QuickCheck
 import UnliftIO (MonadIO (..), MonadUnliftIO, fromEither, race)
 import UnliftIO.Concurrent
 import Prelude hiding (log)
+import Data.ByteString (ByteString, hGetSome)
+import Data.ByteString.Builder.Extra (defaultChunkSize)
+import Data.ByteString.Char8 qualified as ByteString
 
 shouldReturn :: (MonadIO m, Show a, Eq a) => m a -> a -> m ()
 shouldReturn a expected = a >>= liftIO . flip Hspec.shouldBe expected
@@ -93,8 +103,31 @@ reqServer = do
             takeMVar lock
             LazyByteString.hPut outWrite $ encode message
             putMVar lock ()
-
     pure (inWrite, outRead, threadId)
+
+-- | LSP server that accepts requests and answers them with a delay
+hls :: IO (Handle, Handle, Handle, ThreadId)
+hls = do
+    (inRead, inWrite) <- createPipe
+    hSetBuffering inRead LineBuffering
+    hSetBuffering inWrite LineBuffering
+    (outRead, outWrite) <- createPipe
+    hSetBuffering outRead LineBuffering
+    hSetBuffering outWrite LineBuffering
+    (errRead, errWrite) <- createPipe
+    hSetBuffering errRead LineBuffering
+    hSetBuffering errWrite LineBuffering
+    let recorder = Recorder{logger_ = liftIO . hPrint errWrite . payload}
+        logger = Logger $ logWith recorder
+        recorder' = cmapWithPrio (Text.pack . show . pretty) recorder
+        plugins = idePlugins $ cmapWithPrio (Text.pack . show . pretty) recorder
+        arguments =
+            (defaultArguments recorder' logger plugins)
+                { argsHandleIn = pure stdin
+                , argsHandleOut = pure stdout
+                }
+    threadId <- forkIO $ defaultMain recorder' arguments
+    pure (inWrite, outRead, errRead, threadId)
 
 -- | LSP client that waits for queries
 client :: Handle -> Handle -> IO (Session () -> IO (), ThreadId)
@@ -106,26 +139,52 @@ client serverInput serverOutput = do
         a >>= putMVar o
     pure (putMVar i >>> (*> readMVar o), threadId)
 
+getAvailableContents :: Handle -> IO ByteString
+getAvailableContents h = whileJustM $ whenMaybeM (hReady h) (hGetSome h defaultChunkSize)
+
 spec :: Spec
 spec = do
     prop "concurrently handles actions and server messages" $ again $ do
-        (serverIn, serverOut, serverThread) <- diagServer
-        flip finally (killThread serverThread) $ runSessionWithHandles serverOut serverIn $ do
-            -- TODO: we should probably do something smarter than sleep
-            getDiagnostics `shouldReturn` []
-            threadDelay 3_000
-            [d1] <- getDiagnostics
-            threadDelay 3_000
-            [d2] <- getDiagnostics
-            liftIO $ d2._code `shouldNotBe` d1._code
+        bracket
+            diagServer
+            (\(_, _, threadId) -> killThread threadId)
+            $ \(serverIn, serverOut, _) -> runSessionWithHandles serverOut serverIn $ do
+                -- Initially the diagnostics should be empty
+                getDiagnostics `shouldReturn` []
+                -- We allow up to 0.1 s to receive the first batch of diagnostics
+                withTimeout 100_000 $ whileM $ do
+                    threadDelay 1_000
+                    null <$> getDiagnostics
+                [d1] <- getDiagnostics
+                -- We allow up to 0.1 s to receive the next batch of diagnostics
+                withTimeout 100_000 $ whileM $ do
+                    threadDelay 1_000
+                    [d2] <- getDiagnostics
+                    pure $ d2._code == d1._code
     prop "answers requests correctly" $ again $ do
-        (serverIn, serverOut, serverThread) <- reqServer
-        flip finally (threadDelay 1_500 >> killThread serverThread) $ runSessionWithHandles serverOut serverIn $ do
-            req1Done <- newEmptyMVar
-            req1Id <- sendRequest SShutdown Empty (putMVar req1Done . (._id))
-            req2Done <- newEmptyMVar
-            req2Id <- sendRequest SShutdown Empty (putMVar req2Done . (._id))
-            tryTakeMVar req1Done `shouldReturn` Nothing
-            tryTakeMVar req2Done `shouldReturn` Nothing
-            withTimeout 10_500 $ takeMVar req1Done `shouldReturn` Just req1Id
-            withTimeout 1_000 $ takeMVar req2Done `shouldReturn` Just req2Id
+        bracket
+            reqServer
+            (\(_, _, threadId) -> killThread threadId)
+            $ \(serverIn, serverOut, _) -> runSessionWithHandles serverOut serverIn $ do
+                req1Done <- newEmptyMVar
+                req1Id <- sendRequest SShutdown Empty (putMVar req1Done . (._id))
+                req2Done <- newEmptyMVar
+                req2Id <- sendRequest SShutdown Empty (putMVar req2Done . (._id))
+                tryTakeMVar req1Done `shouldReturn` Nothing
+                tryTakeMVar req2Done `shouldReturn` Nothing
+                withTimeout 100_000 $ takeMVar req1Done `shouldReturn` Just req1Id
+                withTimeout 5_000 $ takeMVar req2Done `shouldReturn` Just req2Id
+    prop "opens and changes virtual documents correctly" $ do
+        bracket
+            hls
+            (\(_, _, serverErr, threadId) -> do
+                killThread threadId
+                getAvailableContents serverErr >>= hPutStrLn stderr . ByteString.unpack)
+            $ \(serverIn, serverOut, _, _) -> runSessionWithHandles serverOut serverIn $ do
+                uuid <- liftIO UUID.nextRandom
+                let file = Text.unpack $ UUID.toText uuid <> ".hs"
+                LSP.initialize
+                threadDelay 100_000
+                doc <- LSP.createDoc file "haskell" ""
+                threadDelay 100_000
+                LSP.documentContents doc `shouldReturn` ""
