@@ -102,5 +102,11 @@ newlined t
 withTimeout :: (MonadUnliftIO m, MonadFail m) => Int -> m a -> m a
 withTimeout = ((maybe (fail "Timeout exceeded") pure =<<) .) . timeout
 
-instance Show a => Show (WithPriority a) where
-    show = show . payload
+instance Show (WithPriority Text) where
+    show WithPriority{..} = Text.unpack prioPayload
+      where
+        padWidth = (1 +) . maximum $ Text.length . tshow <$> [minBound @Priority .. maxBound]
+        pad = Text.replicate padWidth " "
+        paddedPayload = Text.intercalate "\n" $ (pad <>) <$> Text.splitOn "\n" payload
+        prio = tshow priority
+        prioPayload = prio <> Text.drop (Text.length prio) paddedPayload
