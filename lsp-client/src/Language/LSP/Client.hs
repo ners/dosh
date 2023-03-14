@@ -17,14 +17,17 @@ import System.IO (Handle, stdin, stdout)
 import UnliftIO.Exception (catch)
 import Prelude
 
-runSession :: Session a -> IO a
+runSession :: Session () -> IO ()
 runSession = runSessionWithHandles stdin stdout
 
-runSessionWithHandles :: Handle -> Handle -> Session a -> IO a
+runSessionWithHandles :: Handle -> Handle -> Session () -> IO ()
 runSessionWithHandles input output action = initVFS $ \vfs -> do
     initialState <- defaultSessionState vfs
     flip runReaderT initialState $ do
-        actionResult <- race (catch @_ @SomeException action $ error . show) $ do
+        let stop :: Session () = do
+                shouldStop <- asks shouldStop
+                liftIO $ atomically $ readTVar shouldStop >>= check
+        actionResult <- race (race stop (catch @_ @SomeException action $ error . show)) $ do
             let send = flip (catch @_ @SomeException) (error . show) $ do
                     message <- asks outgoing >>= liftIO . atomically . readTQueue
                     liftIO $ LazyByteString.hPut output $ encode message
@@ -36,4 +39,11 @@ runSessionWithHandles input output action = initVFS $ \vfs -> do
                     handleServerMessage serverMessage
                     liftIO callback
             concurrently_ (forever send) (forever receive)
-        pure $ fromLeft (error "send/receive thread should not exit!") actionResult
+        case actionResult of
+            Right _ -> error "send/receive thread should not exit!"
+            Left (Left ()) ->
+                -- Ended because `shutdown` was called
+                pure ()
+            Left (Right ()) ->
+                -- Ended because action is over
+                pure ()

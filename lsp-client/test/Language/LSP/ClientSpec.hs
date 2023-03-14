@@ -3,10 +3,13 @@ module Language.LSP.ClientSpec where
 import Control.Arrow ((>>>))
 import Control.Exception
 import Control.Monad
-import Control.Monad.Extra (whileM, whileJustM, whenMaybeM)
+import Control.Monad.Extra (whenMaybeM, whileJustM, whileM)
 import Data.Aeson ((.:))
 import Data.Aeson qualified as Aeson
 import Data.Aeson.Types (parseMaybe)
+import Data.ByteString (ByteString, hGetSome)
+import Data.ByteString.Builder.Extra (defaultChunkSize)
+import Data.ByteString.Char8 qualified as ByteString
 import Data.ByteString.Lazy qualified as LazyByteString
 import Data.Maybe (fromJust)
 import Data.Text qualified as Text
@@ -30,9 +33,6 @@ import Test.QuickCheck
 import UnliftIO (MonadIO (..), MonadUnliftIO, fromEither, race)
 import UnliftIO.Concurrent
 import Prelude hiding (log)
-import Data.ByteString (ByteString, hGetSome)
-import Data.ByteString.Builder.Extra (defaultChunkSize)
-import Data.ByteString.Char8 qualified as ByteString
 
 shouldReturn :: (MonadIO m, Show a, Eq a) => m a -> a -> m ()
 shouldReturn a expected = a >>= liftIO . flip Hspec.shouldBe expected
@@ -177,9 +177,10 @@ spec = do
     prop "opens and changes virtual documents correctly" $ do
         bracket
             hls
-            (\(_, _, serverErr, threadId) -> do
+            ( \(_, _, serverErr, threadId) -> do
                 killThread threadId
-                getAvailableContents serverErr >>= hPutStrLn stderr . ByteString.unpack)
+                getAvailableContents serverErr >>= hPutStrLn stderr . ByteString.unpack
+            )
             $ \(serverIn, serverOut, _, _) -> runSessionWithHandles serverOut serverIn $ do
                 uuid <- liftIO UUID.nextRandom
                 let file = Text.unpack $ UUID.toText uuid <> ".hs"

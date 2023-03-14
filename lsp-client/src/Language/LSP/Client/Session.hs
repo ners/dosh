@@ -73,6 +73,7 @@ data SessionState = SessionState
     , vfs :: TVar VFS
     -- ^ Virtual, in-memory file system of the files known to the LSP
     , rootDir :: FilePath
+    , shouldStop :: TVar Bool
     }
 
 defaultSessionState :: VFS -> IO SessionState
@@ -85,6 +86,7 @@ defaultSessionState vfs' = do
     progressTokens <- newTVarIO mempty
     outgoing <- newTQueueIO
     vfs <- newTVarIO vfs'
+    shouldStop <- newTVarIO False
     pure
         SessionState
             { rootDir = "."
@@ -307,6 +309,11 @@ initialize = do
     asks initialized >>= liftIO . atomically . flip putTMVar (getResponseResult response)
     sendNotification SInitialized $ Just InitializedParams
 
+shutdown :: Session ()
+shutdown = do
+    shouldStop <- asks shouldStop
+    liftIO $ atomically $ writeTVar shouldStop True
+
 {- | Returns the current diagnostics that have been sent to the client.
  Note that this does not wait for more to come in.
 -}
@@ -376,11 +383,11 @@ createDoc file language contents = do
         clientCapsSupports =
             clientCaps
                 ^? workspace
-                    . _Just
-                    . didChangeWatchedFiles
-                    . _Just
-                    . dynamicRegistration
-                    . _Just
+                . _Just
+                . didChangeWatchedFiles
+                . _Just
+                . dynamicRegistration
+                . _Just
                 == Just True
         shouldSend = clientCapsSupports && foldl' (\acc r -> acc || regHits r) False regs
 
