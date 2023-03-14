@@ -425,11 +425,10 @@ getDocumentSymbols doc = do
         Left err -> throw (UnexpectedResponseError (SomeLspId $ fromJust rspLid) err)
 
 -- | The current text contents of a document.
-documentContents :: TextDocumentIdentifier -> Session Text
+documentContents :: TextDocumentIdentifier -> Session (Maybe Text)
 documentContents doc = do
     vfs <- asks vfs >>= liftIO . readTVarIO
-    let Just file = vfs ^. vfsMap . at (toNormalizedUri (doc ^. uri))
-    return (virtualFileText file)
+    pure $ virtualFileText <$> vfs ^. vfsMap . at (toNormalizedUri (doc ^. uri))
 
 -- | Adds the current version to the document, as tracked by the session.
 getVersionedDoc :: TextDocumentIdentifier -> Session VersionedTextDocumentIdentifier

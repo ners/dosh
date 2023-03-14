@@ -76,8 +76,8 @@ handleRequest _ ChangeDocument{..} =
                     ]
             }
 handleRequest respond GetDocumentContents{uri} = do
-    contents <- LSP.documentContents $ TextDocumentIdentifier uri
-    liftIO $ respond DocumentContents{..}
+    mc :: Maybe Text <- LSP.documentContents $ TextDocumentIdentifier uri
+    forM_ mc $ \contents -> liftIO $ respond DocumentContents{..}
 handleRequest respond GetDiagnostics{..} = LSP.getDiagnosticsFor (TextDocumentIdentifier uri) >>= liftIO . respond . Diagnostics
 handleRequest respond GetCompletions{..} = void $ requestCompletions (TextDocumentIdentifier uri) position (liftIO . respond . Completions)
 
