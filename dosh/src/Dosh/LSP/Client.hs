@@ -57,7 +57,7 @@ client server = do
             }
 
 handleRequest :: (Response -> IO ()) -> Request -> Session ()
-handleRequest _ CreateDocument{doc = Document{..}} = void $ LSP.createDoc (show uri) language contents
+handleRequest _ CreateDocument{doc = Document{..}} = void $ LSP.createDoc (fromJust $ uriToFilePath uri) language contents
 handleRequest _ ChangeDocument{..} =
     LSP.sendNotification STextDocumentDidChange $
         DidChangeTextDocumentParams
