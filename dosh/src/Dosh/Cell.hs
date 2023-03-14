@@ -19,6 +19,8 @@ import Reflex
 import Reflex.Vty
 import Reflex.Vty.Widget.Input.Code
 import Skylighting (TokenType)
+import Data.Text.Zipper (Span(Span))
+import Language.LSP.Types.Lens (range, start, line, HasMessage (message))
 
 type CodeZipper = CZ.CodeZipper TokenType
 
@@ -112,8 +114,13 @@ cell
     -> m (Event t CellEvent)
 cell c = do
     let inPrompt = mconcat [if c.evaluated then "*" else " ", "In[", tshow c.number, "]: "]
-    let outPrompt = "Out[" <> tshow c.number <> "]: "
-    let errPrompt = "Err[" <> tshow c.number <> "]: "
+        outPrompt = "Out[" <> tshow c.number <> "]: "
+        errPrompt = "Err[" <> tshow c.number <> "]: "
+        virtualLines :: [(Int, [Span V.Attr])]
+        virtualLines = foldr ((<>) . diagLines) [] c.diagnostics
+            where
+                diagLines :: Diagnostic -> [(Int, [Span V.Attr])]
+                diagLines d = [(fromIntegral $ d ^. range . start . line, [Span V.currentAttr l]) | l <- Text.splitOn "\n" $ d ^. message]
     (cellEvent, triggerCellEvent) <- newTriggerEvent
     unless c.disabled $ void $ do
         vtyInput :: Event t VtyEvent <- Reflex.Vty.input
@@ -152,7 +159,7 @@ cell c = do
                     -- Evaluate the cell if it has any input
                     V.EvKey V.KEnter [] -> triggerCellEvent EvaluateCell
                     _ -> pure ()
-    grout (fixed $ pure $ CZ.lines c.input) $ row $ do
+    grout (fixed $ pure $ length virtualLines + CZ.lines c.input) $ row $ do
         grout (fixed $ pure $ Text.length inPrompt) $ text $ pure inPrompt
         let w = length (show $ lastLine c)
         grout (fixed $ pure $ w + 1) $ col $ forM_ [firstLine c .. lastLine c] $ \l ->
@@ -164,6 +171,7 @@ cell c = do
             codeInput
                 def
                     { _codeInputConfig_value = Just $ pure c.input
+                    , _codeInputConfig_virtualLines = virtualLines
                     , _codeInputConfig_showCursor = not c.disabled
                     }
     forM_ c.output $ \out -> do

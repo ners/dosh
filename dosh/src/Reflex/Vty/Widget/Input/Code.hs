@@ -35,6 +35,8 @@ import Prelude
 
 deriving stock instance Generic (Span tag)
 
+deriving stock instance Generic (DisplayLines t)
+
 type Token = CZ.Token TokenType
 
 type SourceLine = CZ.SourceLine TokenType
@@ -81,7 +83,7 @@ ghcHighlight code = fmap normaliseToks . gsTokensToLines <$> GS.tokenizeHaskell 
 data CodeInputConfig t = CodeInputConfig
     { _codeInputConfig_initialValue :: CodeZipper TokenType
     , _codeInputConfig_value :: Maybe (Dynamic t (CodeZipper TokenType))
-    , _codeInputConfig_virtualLines :: Dynamic t [(Int, [Span V.Attr])]
+    , _codeInputConfig_virtualLines :: [(Int, [Span V.Attr])]
     , _codeInputConfig_modify :: Event t (CodeZipper TokenType -> CodeZipper TokenType)
     , _codeInputConfig_tabWidth :: Int
     , _codeInputConfig_display :: Dynamic t (Char -> Char)
@@ -93,7 +95,7 @@ instance Reflex t => Default (CodeInputConfig t) where
         CodeInputConfig
             { _codeInputConfig_initialValue = CZ.empty
             , _codeInputConfig_value = Nothing
-            , _codeInputConfig_virtualLines = pure []
+            , _codeInputConfig_virtualLines = []
             , _codeInputConfig_modify = never
             , _codeInputConfig_tabWidth = 4
             , _codeInputConfig_display = pure id
@@ -153,7 +155,15 @@ codeInput cfg = mdo
              in displayCodeLines w attr c s
     attrDyn <- holdDyn attr0 $ pushAlways (\_ -> sample bt) (updated rowInputDyn)
     let rows :: Dynamic t (DisplayLines V.Attr)
-        rows = ffor2 attrDyn rowInputDyn toDisplayLines
+        rows =
+            ffor2 attrDyn rowInputDyn toDisplayLines
+                <&> #_displayLines_spans
+                    %~ fst . foldr go ([], reverse $ _codeInputConfig_virtualLines cfg) . zip [0 ..]
+          where
+            go :: (Int, [Span V.Attr]) -> ([[Span V.Attr]], [(Int, [Span V.Attr])]) -> ([[Span V.Attr]], [(Int, [Span V.Attr])])
+            go l@(lineNum, line) (acc, (vlineNum, vline) : vlines)
+                | lineNum <= vlineNum = go l (vline : acc, vlines)
+            go (lineNum, line) (acc, vlines) = (line : acc, vlines)
         img :: Dynamic t [V.Image]
         img = images . _displayLines_spans <$> rows
     y <- holdUniqDyn $ fmap snd _displayLines_cursorPos <$> rows
