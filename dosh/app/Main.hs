@@ -22,7 +22,7 @@ main = mainWidget $ do
     lspClient <- LSP.client lspServer
     initialNotebook <- newNotebook "Haskell" "hs"
     liftIO $ do
-        lspClient.request LSP.Initialize{}
+        lspClient.initialize
         lspClient.request $ LSP.CreateDocument initialNotebook.document
         forkIO $ forever $ do
             threadDelay 1_000_000

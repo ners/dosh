@@ -16,8 +16,7 @@ import Reflex hiding (Request, Response)
 import Prelude hiding (id)
 
 data Request
-    = Initialize {}
-    | CreateDocument {doc :: Document}
+    = CreateDocument {doc :: Document}
     | ChangeDocument {uri :: Uri, range :: Range, contents :: Text}
     | GetDocumentContents {uri :: Uri}
     | GetDiagnostics {uri :: Uri}
@@ -29,7 +28,8 @@ data Response
     | Completions {completions :: [CompletionItem]}
 
 data Client t = Client
-    { request :: Request -> IO ()
+    { initialize :: IO ()
+    , request :: Request -> IO ()
     , onResponse :: Event t Response
     , onError :: Event t SomeException
     , onLog :: Event t (WithPriority Text)
@@ -47,10 +47,16 @@ client server = do
     (onRequest, request) <- newTriggerEvent
     (onResponse, respond) <- newTriggerEvent
     performEvent $ liftIO . server.input . handleRequest respond <$> onRequest
-    pure Client{onError = server.error, onLog = server.log, ..}
+    pure
+        Client
+            { initialize = server.input LSP.initialize
+            , request
+            , onResponse
+            , onError = server.error
+            , onLog = server.log
+            }
 
 handleRequest :: (Response -> IO ()) -> Request -> Session ()
-handleRequest _ Initialize{} = LSP.initialize
 handleRequest _ CreateDocument{doc = Document{..}} = void $ LSP.createDoc (show uri) language contents
 handleRequest _ ChangeDocument{..} =
     LSP.sendNotification STextDocumentDidChange $
