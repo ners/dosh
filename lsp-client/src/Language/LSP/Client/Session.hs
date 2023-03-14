@@ -1,4 +1,3 @@
-{-# LANGUAGE CPP #-}
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
@@ -9,7 +8,7 @@ import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
 import Control.Concurrent.STM
 import Control.Exception (throw)
 import Control.Lens hiding (Empty, List)
-import Control.Monad (unless, when)
+import Control.Monad (ap, unless, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (ReaderT, asks)
 import Control.Monad.State (StateT, execState)
@@ -31,7 +30,7 @@ import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.IO qualified as Text
 import GHC.Generics (Generic)
-import Language.LSP.Client.Compat (getCurrentProcessID)
+import Language.LSP.Client.Compat (getCurrentProcessID, lspClientInfo)
 import Language.LSP.Client.Decoding
 import Language.LSP.Client.Exceptions (SessionException (UnexpectedResponseError))
 import Language.LSP.Types
@@ -106,17 +105,17 @@ documentChangeUri (InR (InR (InR x))) = x ^. uri
 
 handleServerMessage :: FromServerMessage -> Session ()
 handleServerMessage (FromServerMess SProgress req) = do
-    let update = asks progressTokens >>= liftIO . atomically . flip modifyTVar (HashSet.insert $ req ^. params . token)
+    let update = asks progressTokens >>= liftIO . flip modifyTVarIO (HashSet.insert $ req ^. params . token)
     case req ^. params . value of
         Begin{} -> update
         End{} -> update
         Report{} -> pure ()
 handleServerMessage (FromServerMess SClientRegisterCapability req) = do
     let List newRegs = req ^. params . registrations <&> \sr@(SomeRegistration r) -> (r ^. LSP.id, sr)
-    asks serverCapabilities >>= liftIO . atomically . flip modifyTVar (HashMap.union (HashMap.fromList newRegs))
+    asks serverCapabilities >>= liftIO . flip modifyTVarIO (HashMap.union (HashMap.fromList newRegs))
 handleServerMessage (FromServerMess SClientUnregisterCapability req) = do
     let List unRegs = req ^. params . unregisterations <&> (^. LSP.id)
-    asks serverCapabilities >>= liftIO . atomically . flip modifyTVar (flip (foldr' HashMap.delete) unRegs)
+    asks serverCapabilities >>= liftIO . flip modifyTVarIO (flip (foldr' HashMap.delete) unRegs)
 handleServerMessage (FromServerMess STextDocumentPublishDiagnostics msg) =
     asks lastDiagnostics
         >>= liftIO
@@ -141,7 +140,7 @@ handleServerMessage (FromServerMess SWorkspaceApplyEdit r) = do
             Nothing ->
                 error "WorkspaceEdit contains neither documentChanges nor changes!"
 
-    asks vfs >>= liftIO . atomically . flip modifyTVar (execState $ changeFromServerVFS logger r)
+    asks vfs >>= liftIO . flip modifyTVarIO (execState $ changeFromServerVFS logger r)
 
     let groupedParams = groupBy (\a b -> a ^. textDocument == b ^. textDocument) allChangeParams
         mergedParams = mergeParams <$> groupedParams
@@ -183,7 +182,7 @@ handleServerMessage (FromServerMess SWorkspaceApplyEdit r) = do
             let item = TextDocumentItem (filePathToUri fp) "" 0 contents
                 msg = NotificationMessage "2.0" STextDocumentDidOpen (DidOpenTextDocumentParams item)
             sendMessage $ fromClientNot msg
-            asks vfs >>= liftIO . atomically . flip modifyTVar (execState $ openVFS logger msg)
+            asks vfs >>= liftIO . flip modifyTVarIO (execState $ openVFS logger msg)
 
     getParamsFromTextDocumentEdit :: TextDocumentEdit -> DidChangeTextDocumentParams
     getParamsFromTextDocumentEdit (TextDocumentEdit docId (List edits)) = do
@@ -223,6 +222,12 @@ handleServerMessage _ = pure ()
 overTVar :: (a -> a) -> TVar a -> STM a
 overTVar f var = stateTVar var (\x -> (f x, f x))
 
+overTVarIO :: (a -> a) -> TVar a -> IO a
+overTVarIO = (atomically .) . overTVar
+
+modifyTVarIO :: TVar a -> (a -> a) -> IO ()
+modifyTVarIO = (atomically .) . modifyTVar
+
 -- | Sends a request to the server, with a callback that fires when the response arrives.
 sendRequest
     :: forall m
@@ -232,15 +237,8 @@ sendRequest
     -> (ResponseMessage m -> IO ())
     -> Session (LspId m)
 sendRequest method params callback = do
-    reqId <- asks lastRequestId >>= liftIO . atomically . overTVar (+ 1) <&> IdInt
-    asks pendingRequests
-        >>= liftIO
-            . atomically
-            . flip
-                modifyTVar
-                ( \requestMap ->
-                    fromMaybe requestMap $ insertIxMap reqId Callback{..} requestMap
-                )
+    reqId <- asks lastRequestId >>= liftIO . overTVarIO (+ 1) <&> IdInt
+    asks pendingRequests >>= liftIO . flip modifyTVarIO (ap fromMaybe $ insertIxMap reqId Callback{..})
     sendMessage $ fromClientReq $ RequestMessage "2.0" reqId method params
     pure reqId
 
@@ -293,12 +291,7 @@ initialize = do
             InitializeParams
                 { _workDoneToken = Nothing
                 , _processId = Just $ fromIntegral pid
-                , _clientInfo =
-                    Just
-                        ClientInfo
-                            { _name = "lsp-client"
-                            , _version = Just CURRENT_PACKAGE_VERSION
-                            }
+                , _clientInfo = Just lspClientInfo
                 , _rootPath = Nothing
                 , _rootUri = Nothing
                 , _initializationOptions = Nothing
@@ -325,23 +318,6 @@ getDiagnostics = asks lastDiagnostics >>= liftIO . readTVarIO <&> concatMap snd 
 -}
 getDiagnosticsFor :: TextDocumentIdentifier -> Session [Diagnostic]
 getDiagnosticsFor doc = asks lastDiagnostics >>= liftIO . readTVarIO <&> HashMap.lookupDefault [] (toNormalizedUri $ doc ^. uri)
-
--- | Returns the completions for the position in the document.
-getCompletions :: TextDocumentIdentifier -> Position -> Session [CompletionItem]
-getCompletions doc pos = do
-    response <-
-        request
-            STextDocumentCompletion
-            CompletionParams
-                { _textDocument = doc
-                , _position = pos
-                , _workDoneToken = Nothing
-                , _partialResultToken = Nothing
-                , _context = Nothing
-                }
-    case getResponseResult response of
-        InL (List items) -> pure items
-        InR (CompletionList{_items = List items}) -> pure items
 
 {- | /Creates/ a new text document. This is different from 'openDoc'
  as it sends a workspace/didChangeWatchedFiles notification letting the server

@@ -44,7 +44,6 @@ common common
         base,
         bytestring,
         lsp-types,
-        process,
         text,
 
 library
@@ -92,6 +91,7 @@ test-suite spec
         haskell-language-server,
         hspec,
         lsp-client,
+        process,
         unliftio,
         uuid
     other-modules:

@@ -14,6 +14,7 @@ import Data.UUID.V4 qualified as UUID
 import Dosh.Prelude
 import Dosh.Util
 import Graphics.Vty qualified as V
+import Language.LSP.Types (Diagnostic)
 import Reflex
 import Reflex.Vty
 import Reflex.Vty.Widget.Input.Code
@@ -30,6 +31,7 @@ data Cell = Cell
     , error :: Maybe Text
     , disabled :: Bool
     , evaluated :: Bool
+    , diagnostics :: [Diagnostic]
     }
     deriving stock (Generic, Eq, Show)
 
@@ -49,6 +51,7 @@ instance Default Cell where
             , error = Nothing
             , disabled = True
             , evaluated = False
+            , diagnostics = []
             }
 
 lastLine :: Cell -> Int

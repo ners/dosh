@@ -6,6 +6,7 @@ module Dosh.Notebook where
 
 import Control.Lens
 import Control.Monad.Fix
+import Data.Default
 import Data.HashMap.Strict (HashMap)
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Sequence (Seq)
@@ -69,8 +70,10 @@ createCell' f n =
         & #cellOrder %~ (<> SZ.singleton c.uid)
         & #document . #chunks %~ (<> SZ.singleton chunk)
   where
-    c = f def & #number .~ n.nextCellNumber
-              & #input . #language .~ n.document.language
+    c =
+        f def
+            & #number .~ n.nextCellNumber
+            & #input . #language .~ n.document.language
     chunk =
         LSP.Document.ChunkMetadata
             { cellId = c.uid

@@ -81,6 +81,7 @@ ghcHighlight code = fmap normaliseToks . gsTokensToLines <$> GS.tokenizeHaskell 
 data CodeInputConfig t = CodeInputConfig
     { _codeInputConfig_initialValue :: CodeZipper TokenType
     , _codeInputConfig_value :: Maybe (Dynamic t (CodeZipper TokenType))
+    , _codeInputConfig_virtualLines :: Dynamic t [(Int, [Span V.Attr])]
     , _codeInputConfig_modify :: Event t (CodeZipper TokenType -> CodeZipper TokenType)
     , _codeInputConfig_tabWidth :: Int
     , _codeInputConfig_display :: Dynamic t (Char -> Char)
@@ -92,6 +93,7 @@ instance Reflex t => Default (CodeInputConfig t) where
         CodeInputConfig
             { _codeInputConfig_initialValue = CZ.empty
             , _codeInputConfig_value = Nothing
+            , _codeInputConfig_virtualLines = pure []
             , _codeInputConfig_modify = never
             , _codeInputConfig_tabWidth = 4
             , _codeInputConfig_display = pure id
@@ -105,7 +107,14 @@ data CodeInput t = CodeInput
 
 codeInput
     :: forall t m
-     . (MonadHold t m, MonadFix m, HasInput t m, HasFocusReader t m, HasTheme t m, HasImageWriter t m, HasDisplayRegion t m)
+     . ( MonadHold t m
+       , MonadFix m
+       , HasInput t m
+       , HasFocusReader t m
+       , HasTheme t m
+       , HasImageWriter t m
+       , HasDisplayRegion t m
+       )
     => CodeInputConfig t
     -> m (CodeInput t)
 codeInput cfg = mdo

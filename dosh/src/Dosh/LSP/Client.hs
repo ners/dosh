@@ -1,10 +1,12 @@
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE LambdaCase #-}
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
 {-# OPTIONS_GHC -Wno-partial-fields #-}
 
 module Dosh.LSP.Client where
 
 import Development.IDE (WithPriority)
+import Dosh.LSP.Document
 import Dosh.LSP.Server (Server (..))
 import Dosh.Prelude hiding (List)
 import Language.LSP.Client.Session (Session)
@@ -12,7 +14,6 @@ import Language.LSP.Client.Session qualified as LSP
 import Language.LSP.Types hiding (Initialize)
 import Reflex hiding (Request, Response)
 import Prelude hiding (id)
-import Dosh.LSP.Document
 
 data Request
     = Initialize {}
@@ -72,4 +73,22 @@ handleRequest respond GetDocumentContents{uri} = do
     contents <- LSP.documentContents $ TextDocumentIdentifier uri
     liftIO $ respond DocumentContents{..}
 handleRequest respond GetDiagnostics{..} = LSP.getDiagnosticsFor (TextDocumentIdentifier uri) >>= liftIO . respond . Diagnostics
-handleRequest respond GetCompletions{..} = LSP.getCompletions (TextDocumentIdentifier uri) position >>= liftIO . respond . Completions
+handleRequest respond GetCompletions{..} = void $ requestCompletions (TextDocumentIdentifier uri) position (liftIO . respond . Completions)
+
+-- | Requests the completions for the position in the document.
+requestCompletions :: TextDocumentIdentifier -> Position -> ([CompletionItem] -> IO ()) -> Session (LspId 'TextDocumentCompletion)
+requestCompletions doc pos callback =
+    LSP.sendRequest
+        STextDocumentCompletion
+        CompletionParams
+            { _textDocument = doc
+            , _position = pos
+            , _workDoneToken = Nothing
+            , _partialResultToken = Nothing
+            , _context = Nothing
+            }
+        $ LSP.getResponseResult
+            >>> \case
+                InL (List items) -> items
+                InR (CompletionList{_items = List items}) -> items
+            >>> callback
