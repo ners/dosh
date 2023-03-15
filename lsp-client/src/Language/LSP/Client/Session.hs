@@ -41,7 +41,9 @@ import Language.LSP.VFS
     ( VFS
     , VfsLog
     , VirtualFile (..)
+    , changeFromClientVFS
     , changeFromServerVFS
+    , closeVFS
     , lsp_version
     , openVFS
     , vfsMap
@@ -274,13 +276,28 @@ getResponseResult response = either err id $ response ^. result
     lid = SomeLspId $ fromJust $ response ^. LSP.id
     err = throw . UnexpectedResponseError lid
 
--- | Sends a notification to the server.
+-- | Sends a notification to the server. Update the VFS as needed
 sendNotification
     :: forall m
      . Message m ~ NotificationMessage m
     => SClientMethod m
     -> MessageParams m
     -> Session ()
+sendNotification STextDocumentDidOpen params = do
+  let n = NotificationMessage "2.0" STextDocumentDidOpen params
+  vfs <- asks vfs
+  liftIO $ modifyTVarIO vfs (execState $ openVFS mempty n)
+  sendMessage $ fromClientNot n
+sendNotification STextDocumentDidClose params = do
+  let n = NotificationMessage "2.0" STextDocumentDidClose params
+  vfs <- asks vfs
+  liftIO $ modifyTVarIO vfs (execState $ closeVFS mempty n)
+  sendMessage $ fromClientNot n
+sendNotification STextDocumentDidChange params = do
+  let n = NotificationMessage "2.0" STextDocumentDidChange params
+  vfs <- asks vfs
+  liftIO $ modifyTVarIO vfs (execState $ changeFromClientVFS mempty n)
+  sendMessage $ fromClientNot n
 sendNotification method params = sendMessage $ fromClientNot $ NotificationMessage "2.0" method params
 
 sendMessage :: FromClientMessage -> Session ()
