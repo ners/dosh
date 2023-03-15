@@ -40,10 +40,6 @@ main = mainWidget $ do
             grout flex $ text $ current $ Text.unlines . fmap tshow . toList . after . chunks . document <$> dn
             grout (fixed $ pure 1) $ text $ pure "content:"
             grout flex $ text $ current $ withLineNumbers . contents . document <$> dn
-            grout (fixed $ pure 1) $ text $ pure "diagnostics:"
-            grout flex $ text $ current $ tshow . diagnostics . document <$> dn
-            grout (fixed $ pure 1) $ text $ pure "completions:"
-            grout flex $ text $ current $ tshow . completions . document <$> dn
         void <$> ctrldPressed
   where
     withLineNumbers :: Text -> Text

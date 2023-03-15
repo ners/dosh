@@ -28,7 +28,6 @@ import Dosh.LSP.Document (ChunkMetadata, ChunkType (..), Document, newDocument)
 import Dosh.LSP.Document qualified as LSP.Document
 import Dosh.Prelude
 import Dosh.Util
-import GHC.Exts (IsList (toList))
 import Language.LSP.Types (filePathToUri)
 import Language.LSP.Types qualified as LSP
 import Reflex hiding (Query, Response)
@@ -116,7 +115,7 @@ notebook
     -> Notebook
     -> m (Event t Notebook)
 notebook ghc lsp n = do
-    cellEvents :: Event t [(Cell, CellEvent)] <- NonEmpty.toList <$$> (mergeList . GHC.Exts.toList) <$> for n.cellOrder (\cid -> (fromJust $ n.cells ^. at cid,) <$$> cell (fromJust $ n ^. #cells . at cid))
+    cellEvents :: Event t [(Cell, CellEvent)] <- NonEmpty.toList <$$> (mergeList . toList) <$> for n.cellOrder (\cid -> (fromJust $ n.cells ^. at cid,) <$$> cell (fromJust $ n ^. #cells . at cid))
     cellUpdates :: Event t Notebook <- performEvent $ foldrM (uncurry $ handleCellEvent ghc lsp) n <$> cellEvents
     ghcUpdates :: Event t Notebook <-
         performEvent $
@@ -279,5 +278,14 @@ handleLspResponse
     -> Notebook
     -> m Notebook
 handleLspResponse LSP.DocumentContents{..} = pure . (#document . #contents .~ contents)
-handleLspResponse LSP.Diagnostics{..} = pure . (#document . #diagnostics .~ diagnostics)
-handleLspResponse LSP.Completions{..} = pure . (#document . #completions .~ completions)
+handleLspResponse LSP.Diagnostics{..} = pure . (clearDiagnostics >>> setDiagnostics)
+    where
+        clearDiagnostics :: Notebook -> Notebook
+        clearDiagnostics = #cells . traverse . #diagnostics .~ []
+        setDiagnostics :: Notebook -> Notebook
+        setDiagnostics = foldr (.) id $ setDiagnostic <$> diagnostics
+        setDiagnostic :: LSP.Diagnostic -> Notebook -> Notebook
+        setDiagnostic d = #cells . traverse . filtered (hasDiagnostic d) %~ #diagnostics %~ (d:)
+        hasDiagnostic :: LSP.Diagnostic -> Cell -> Bool
+        hasDiagnostic (diagnosticLine -> l) c = firstLine c <= l && lastLine c >= l
+handleLspResponse LSP.Completions{} = pure

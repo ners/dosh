@@ -10,9 +10,11 @@ import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
-import Development.IDE.Types.Logger
+import Development.IDE (Priority, WithPriority (..))
 import Dosh.Prelude
 import Graphics.Vty (Key (..), Modifier (..))
+import Language.LSP.Types (Diagnostic)
+import Language.LSP.Types.Lens (HasLine (line), range, start)
 import Reflex
 import Reflex.Vty
 
@@ -110,3 +112,6 @@ instance Show (WithPriority Text) where
         paddedPayload = Text.intercalate "\n" $ (pad <>) <$> Text.splitOn "\n" payload
         prio = tshow priority
         prioPayload = prio <> Text.drop (Text.length prio) paddedPayload
+
+diagnosticLine :: Diagnostic -> Int
+diagnosticLine = fromIntegral . view (range . start . line)

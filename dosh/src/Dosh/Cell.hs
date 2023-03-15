@@ -1,4 +1,5 @@
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
+{-# LANGUAGE LambdaCase #-}
 
 module Dosh.Cell where
 
@@ -14,13 +15,13 @@ import Data.UUID.V4 qualified as UUID
 import Dosh.Prelude
 import Dosh.Util
 import Graphics.Vty qualified as V
-import Language.LSP.Types (Diagnostic)
+import Language.LSP.Types (Diagnostic, DiagnosticSeverity (..))
 import Reflex
 import Reflex.Vty
 import Reflex.Vty.Widget.Input.Code
 import Skylighting (TokenType)
 import Data.Text.Zipper (Span(Span))
-import Language.LSP.Types.Lens (range, start, line, HasMessage (message))
+import Language.LSP.Types.Lens (message, severity)
 
 type CodeZipper = CZ.CodeZipper TokenType
 
@@ -120,7 +121,12 @@ cell c = do
         virtualLines = foldr ((<>) . diagLines) [] c.diagnostics
             where
                 diagLines :: Diagnostic -> [(Int, [Span V.Attr])]
-                diagLines d = [(fromIntegral $ d ^. range . start . line, [Span V.currentAttr l]) | l <- Text.splitOn "\n" $ d ^. message]
+                diagLines d = Text.splitOn "\n" (d ^. message) <&> \l -> (diagnosticLine d, [Span (diagAttr d) l])
+                diagAttr :: Diagnostic -> V.Attr
+                diagAttr = view severity >>> \case
+                    Just DsError -> V.withForeColor V.currentAttr V.red
+                    Just DsWarning -> V.withForeColor V.currentAttr V.magenta
+                    _ -> V.currentAttr
     (cellEvent, triggerCellEvent) <- newTriggerEvent
     unless c.disabled $ void $ do
         vtyInput :: Event t VtyEvent <- Reflex.Vty.input
@@ -161,12 +167,12 @@ cell c = do
                     _ -> pure ()
     grout (fixed $ pure $ length virtualLines + CZ.lines c.input) $ row $ do
         grout (fixed $ pure $ Text.length inPrompt) $ text $ pure inPrompt
-        let w = length (show $ lastLine c)
-        grout (fixed $ pure $ w + 1) $ col $ forM_ [firstLine c .. lastLine c] $ \l ->
-            let t = tshow l
-                pad = w - Text.length t
-                tp = Text.replicate pad " " <> t
-             in grout (fixed $ pure 1) $ dimText $ pure tp
+        --let w = length (show $ lastLine c)
+        --grout (fixed $ pure $ w + 1) $ col $ forM_ [firstLine c .. lastLine c] $ \l ->
+        --    let t = tshow l
+        --        pad = w - Text.length t
+        --        tp = Text.replicate pad " " <> t
+        --     in grout (fixed $ pure 1) $ dimText $ pure tp
         grout flex $
             codeInput
                 def
