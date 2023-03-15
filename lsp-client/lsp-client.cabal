@@ -44,7 +44,6 @@ common common
         base,
         bytestring,
         lsp-types,
-        text,
 
 library
     import:           common
@@ -65,6 +64,7 @@ library
         lsp,
         mtl,
         stm,
+        text,
         unliftio,
         unordered-containers,
     if os(windows)
@@ -89,11 +89,9 @@ test-suite spec
         QuickCheck,
         extra,
         ghcide,
-        haskell-language-server,
         hspec,
         lsp-client,
         process,
         unliftio,
-        uuid
     other-modules:
         Language.LSP.ClientSpec
