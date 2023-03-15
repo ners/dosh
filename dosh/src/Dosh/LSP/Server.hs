@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
@@ -5,12 +6,20 @@ module Dosh.LSP.Server where
 
 import Data.ByteString (hGetSome, hPut)
 import Data.ByteString.Builder.Extra (defaultChunkSize)
+import Data.Default (def)
 import Data.Text.Encoding qualified as Text
 import Data.Text.IO qualified as Text
 import Development.IDE (Logger (Logger), Pretty (pretty), Recorder (..), WithPriority, cmapWithPrio, logWith)
 import Development.IDE.Main (Arguments (..), defaultArguments, defaultMain)
+import Development.IDE.Session (findCradle, loadCradle)
 import Dosh.Prelude
 import Dosh.Util hiding (withTimeout)
+import GHC.Paths qualified as GHC
+import GHC.Settings.Config qualified as GHC
+import HIE.Bios.Config (CradleConfig (..), CradleType (..))
+import HIE.Bios.Cradle (getCradle)
+import HIE.Bios.Types (ComponentOptions (..), Cradle (..), CradleAction (..), CradleLoadResult (..))
+import HIE.Bios.Types qualified as Cradle
 import HlsPlugins (idePlugins)
 import Language.LSP.Client qualified as LSP
 import Language.LSP.Client.Session (Session)
@@ -18,7 +27,7 @@ import Reflex
     ( Reflex (Event)
     , TriggerEvent (newTriggerEvent)
     )
-import System.Process (createPipe)
+import System.Process.Extra
 
 data Server t = Server
     { input :: Session () -> IO ()
@@ -84,5 +93,39 @@ ghcide recorder stdin stdout = do
             (defaultArguments recorder' logger plugins)
                 { argsHandleIn = pure stdin
                 , argsHandleOut = pure stdout
+                , argsSessionLoadingOptions =
+                    def
+                        { findCradle = const $ pure Nothing
+                        , loadCradle = \_ _ ->
+                            pure $
+                                getCradle
+                                    undefined
+                                    ( CradleConfig
+                                        { cradleDependencies = []
+                                        , cradleType = Direct{arguments = []}
+                                        }
+                                    , "."
+                                    )
+                        }
                 }
     defaultMain recorder' arguments
+
+directCradle :: FilePath -> [String] -> Cradle a
+directCradle wdir args =
+    Cradle
+        { cradleRootDir = wdir
+        , cradleOptsProg =
+            CradleAction
+                { actionName = Cradle.Direct
+                , runCradle = \_ _ ->
+                    return (CradleSuccess (ComponentOptions (args ++ argDynamic) wdir []))
+                , runGhcCmd =
+                    pure . \case
+                        ["--print-libdir"] -> CradleSuccess GHC.libdir
+                        ["--numeric-version"] -> CradleSuccess GHC.cProjectVersion
+                        _ -> CradleNone
+                }
+        }
+  where
+    argDynamic :: [String]
+    argDynamic = ["-dynamic"]

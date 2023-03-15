@@ -8,11 +8,10 @@ import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
 import Control.Concurrent.STM
 import Control.Exception (throw)
 import Control.Lens hiding (Empty, List)
-import Control.Monad (ap, unless, when)
+import Control.Monad (unless, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (ReaderT, asks)
 import Control.Monad.State (StateT, execState)
-import Data.Coerce (coerce)
 import Data.Default (def)
 import Data.Foldable (foldl', foldr', forM_, toList)
 import Data.Function (on)
@@ -23,7 +22,6 @@ import Data.HashMap.Strict qualified as HashMap
 import Data.HashSet (HashSet)
 import Data.HashSet qualified as HashSet
 import Data.Hashable (Hashable)
-import Data.IxMap (insertIxMap)
 import Data.List (groupBy, sortBy)
 import Data.Maybe (fromJust, fromMaybe, mapMaybe)
 import Data.Text (Text)
@@ -62,8 +60,8 @@ deriving anyclass instance Hashable ProgressToken
 data SessionState = SessionState
     { initialized :: TMVar InitializeResult
     , pendingRequests :: TVar RequestMap
+    , notificationHandlers :: TVar NotificationMap
     , lastRequestId :: TVar Int32
-    , lastDiagnostics :: TVar (HashMap NormalizedUri [Diagnostic])
     , serverCapabilities :: TVar (HashMap Text SomeRegistration)
     -- ^ The capabilities that the server has dynamically registered with us so
     -- far
@@ -80,9 +78,9 @@ data SessionState = SessionState
 defaultSessionState :: VFS -> IO SessionState
 defaultSessionState vfs' = do
     initialized <- newEmptyTMVarIO
-    pendingRequests <- newTVarIO newRequestMap
+    pendingRequests <- newTVarIO emptyRequestMap
+    notificationHandlers <- newTVarIO emptyNotificationMap
     lastRequestId <- newTVarIO 0
-    lastDiagnostics <- newTVarIO mempty
     serverCapabilities <- newTVarIO mempty
     progressTokens <- newTVarIO mempty
     outgoing <- newTQueueIO
@@ -118,13 +116,6 @@ handleServerMessage (FromServerMess SClientRegisterCapability req) = do
 handleServerMessage (FromServerMess SClientUnregisterCapability req) = do
     let List unRegs = req ^. params . unregisterations <&> (^. LSP.id)
     asks serverCapabilities >>= liftIO . flip modifyTVarIO (flip (foldr' HashMap.delete) unRegs)
-handleServerMessage (FromServerMess STextDocumentPublishDiagnostics msg) =
-    asks lastDiagnostics
-        >>= liftIO
-            . atomically
-            . flip
-                modifyTVar
-                (HashMap.insert (toNormalizedUri $ msg ^. params . uri) (coerce $ msg ^. params . diagnostics))
 handleServerMessage (FromServerMess SWorkspaceApplyEdit r) = do
     -- First, prefer the versioned documentChanges field
     allChangeParams <- case r ^. params . edit . documentChanges of
@@ -157,9 +148,8 @@ handleServerMessage (FromServerMess SWorkspaceApplyEdit r) = do
     forM_ latestVersions $ \(VersionedTextDocumentIdentifier uri v) ->
         asks vfs
             >>= liftIO
-                . atomically
                 . flip
-                    modifyTVar
+                    modifyTVarIO
                     ( \vfs -> do
                         let update (VirtualFile oldV file_ver t) = VirtualFile (fromMaybe oldV v) (file_ver + 1) t
                          in vfs & vfsMap . ix (toNormalizedUri uri) %~ update
@@ -180,9 +170,8 @@ handleServerMessage (FromServerMess SWorkspaceApplyEdit r) = do
 
         -- if its not open, open it
         unless isOpen $ do
-            let fp = fromJust $ uriToFilePath uri
-            contents <- liftIO $ Text.readFile fp
-            let item = TextDocumentItem (filePathToUri fp) "" 0 contents
+            contents <- maybe (pure "") (liftIO . Text.readFile) (uriToFilePath uri)
+            let item = TextDocumentItem uri "" 0 contents
                 msg = NotificationMessage "2.0" STextDocumentDidOpen (DidOpenTextDocumentParams item)
             sendMessage $ fromClientNot msg
             asks vfs >>= liftIO . flip modifyTVarIO (execState $ openVFS logger msg)
@@ -231,18 +220,21 @@ overTVarIO = (atomically .) . overTVar
 modifyTVarIO :: TVar a -> (a -> a) -> IO ()
 modifyTVarIO = (atomically .) . modifyTVar
 
+writeTVarIO :: TVar a -> a -> IO ()
+writeTVarIO = (atomically .) . writeTVar
+
 -- | Sends a request to the server, with a callback that fires when the response arrives.
 sendRequest
-    :: forall m
+    :: forall (m :: Method 'FromClient 'Request)
      . Message m ~ RequestMessage m
-    => SClientMethod m
+    => SMethod m
     -> MessageParams m
     -> (ResponseMessage m -> IO ())
     -> Session (LspId m)
-sendRequest method params callback = do
+sendRequest requestMethod params requestCallback = do
     reqId <- asks lastRequestId >>= liftIO . overTVarIO (+ 1) <&> IdInt
-    asks pendingRequests >>= liftIO . flip modifyTVarIO (ap fromMaybe $ insertIxMap reqId Callback{..})
-    sendMessage $ fromClientReq $ RequestMessage "2.0" reqId method params
+    asks pendingRequests >>= liftIO . flip modifyTVarIO (updateRequestMap reqId RequestCallback{..})
+    sendMessage $ fromClientReq $ RequestMessage "2.0" reqId requestMethod params
     pure reqId
 
 sendResponse
@@ -257,9 +249,9 @@ sendResponse req =
 
 -- | Sends a request to the server and waits for its response.
 request
-    :: forall m
+    :: forall (m :: Method 'FromClient 'Request)
      . Message m ~ RequestMessage m
-    => SClientMethod m
+    => SMethod m
     -> MessageParams m
     -> Session (ResponseMessage m)
 request method params = do
@@ -278,27 +270,40 @@ getResponseResult response = either err id $ response ^. result
 
 -- | Sends a notification to the server. Update the VFS as needed
 sendNotification
-    :: forall m
+    :: forall (m :: Method 'FromClient 'Notification)
      . Message m ~ NotificationMessage m
-    => SClientMethod m
+    => SMethod m
     -> MessageParams m
     -> Session ()
 sendNotification STextDocumentDidOpen params = do
-  let n = NotificationMessage "2.0" STextDocumentDidOpen params
-  vfs <- asks vfs
-  liftIO $ modifyTVarIO vfs (execState $ openVFS mempty n)
-  sendMessage $ fromClientNot n
+    let n = NotificationMessage "2.0" STextDocumentDidOpen params
+    vfs <- asks vfs
+    liftIO $ modifyTVarIO vfs (execState $ openVFS mempty n)
+    sendMessage $ fromClientNot n
 sendNotification STextDocumentDidClose params = do
-  let n = NotificationMessage "2.0" STextDocumentDidClose params
-  vfs <- asks vfs
-  liftIO $ modifyTVarIO vfs (execState $ closeVFS mempty n)
-  sendMessage $ fromClientNot n
+    let n = NotificationMessage "2.0" STextDocumentDidClose params
+    vfs <- asks vfs
+    liftIO $ modifyTVarIO vfs (execState $ closeVFS mempty n)
+    sendMessage $ fromClientNot n
 sendNotification STextDocumentDidChange params = do
-  let n = NotificationMessage "2.0" STextDocumentDidChange params
-  vfs <- asks vfs
-  liftIO $ modifyTVarIO vfs (execState $ changeFromClientVFS mempty n)
-  sendMessage $ fromClientNot n
+    let n = NotificationMessage "2.0" STextDocumentDidChange params
+    vfs <- asks vfs
+    liftIO $ modifyTVarIO vfs (execState $ changeFromClientVFS mempty n)
+    sendMessage $ fromClientNot n
 sendNotification method params = sendMessage $ fromClientNot $ NotificationMessage "2.0" method params
+
+receiveNotification
+    :: forall (m :: Method 'FromServer 'Notification)
+     . SMethod m
+    -> (Message m -> IO ())
+    -> Session ()
+receiveNotification method notificationCallback =
+    asks notificationHandlers
+        >>= liftIO
+            . flip
+                modifyTVarIO
+                ( updateNotificationMap method NotificationCallback{..}
+                )
 
 sendMessage :: FromClientMessage -> Session ()
 sendMessage msg = asks outgoing >>= liftIO . atomically . (`writeTQueue` msg)
@@ -326,19 +331,7 @@ initialize = do
 shutdown :: Session ()
 shutdown = do
     shouldStop <- asks shouldStop
-    liftIO $ atomically $ writeTVar shouldStop True
-
-{- | Returns the current diagnostics that have been sent to the client.
- Note that this does not wait for more to come in.
--}
-getDiagnostics :: Session [Diagnostic]
-getDiagnostics = asks lastDiagnostics >>= liftIO . readTVarIO <&> concatMap snd . HashMap.toList
-
-{- | Returns the current diagnostics for a given document that have been sent to the client.
- Note that this does not wait for more to come in.
--}
-getDiagnosticsFor :: TextDocumentIdentifier -> Session [Diagnostic]
-getDiagnosticsFor doc = asks lastDiagnostics >>= liftIO . readTVarIO <&> HashMap.lookupDefault [] (toNormalizedUri $ doc ^. uri)
+    liftIO $ writeTVarIO shouldStop True
 
 {- | /Creates/ a new text document. This is different from 'openDoc'
  as it sends a workspace/didChangeWatchedFiles notification letting the server
@@ -380,11 +373,11 @@ createDoc file language contents = do
         clientCapsSupports =
             clientCaps
                 ^? workspace
-                . _Just
-                . didChangeWatchedFiles
-                . _Just
-                . dynamicRegistration
-                . _Just
+                    . _Just
+                    . didChangeWatchedFiles
+                    . _Just
+                    . dynamicRegistration
+                    . _Just
                 == Just True
         shouldSend = clientCapsSupports && foldl' (\acc r -> acc || regHits r) False regs
 

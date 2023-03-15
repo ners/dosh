@@ -5,6 +5,7 @@
 
 module Dosh.LSP.Client where
 
+import Data.Coerce (coerce)
 import Development.IDE (WithPriority)
 import Dosh.LSP.Document
 import Dosh.LSP.Server (Server (..))
@@ -12,6 +13,8 @@ import Dosh.Prelude hiding (List)
 import Language.LSP.Client.Session (Session)
 import Language.LSP.Client.Session qualified as LSP
 import Language.LSP.Types hiding (Initialize)
+import Language.LSP.Types qualified as LSP
+import Language.LSP.Types.Lens qualified as LSP
 import Reflex hiding (Request, Response)
 import Prelude hiding (id)
 
@@ -20,7 +23,6 @@ data Request
     | CreateDocument {doc :: Document}
     | ChangeDocument {uri :: Uri, range :: Range, contents :: Text}
     | GetDocumentContents {uri :: Uri}
-    | GetDiagnostics {uri :: Uri}
     | GetCompletions {uri :: Uri, position :: Position}
 
 data Response
@@ -39,6 +41,7 @@ client
     :: forall t m
      . ( PerformEvent t m
        , TriggerEvent t m
+       , MonadIO m
        , MonadIO (Performable m)
        )
     => Server t
@@ -46,6 +49,12 @@ client
 client server = do
     (onRequest, request) <- newTriggerEvent
     (onResponse, respond) <- newTriggerEvent
+    liftIO . server.input $ do
+        LSP.receiveNotification LSP.STextDocumentPublishDiagnostics $ \msg ->
+            respond
+                Diagnostics
+                    { diagnostics = coerce $ msg ^. LSP.params . LSP.diagnostics
+                    }
     performEvent $ liftIO . server.input . handleRequest respond <$> onRequest
     pure
         Client
@@ -59,26 +68,17 @@ handleRequest :: (Response -> IO ()) -> Request -> Session ()
 handleRequest _ Initialize{} = LSP.initialize
 handleRequest _ CreateDocument{doc = Document{..}} = void $ LSP.createDoc (fromJust $ uriToFilePath uri) language contents
 handleRequest _ ChangeDocument{..} =
-    LSP.sendNotification STextDocumentDidChange $
-        DidChangeTextDocumentParams
-            { _textDocument =
-                VersionedTextDocumentIdentifier
-                    { _uri = uri
-                    , _version = Just 1
-                    }
-            , _contentChanges =
-                List
-                    [ TextDocumentContentChangeEvent
-                        { _range = Just range
-                        , _rangeLength = Nothing
-                        , _text = contents
-                        }
-                    ]
+    LSP.changeDoc
+        (TextDocumentIdentifier uri)
+        [ TextDocumentContentChangeEvent
+            { _range = Just range
+            , _rangeLength = Nothing
+            , _text = contents
             }
+        ]
 handleRequest respond GetDocumentContents{uri} = do
     mc :: Maybe Text <- LSP.documentContents $ TextDocumentIdentifier uri
     forM_ mc $ \contents -> liftIO $ respond DocumentContents{..}
-handleRequest respond GetDiagnostics{..} = LSP.getDiagnosticsFor (TextDocumentIdentifier uri) >>= liftIO . respond . Diagnostics
 handleRequest respond GetCompletions{..} = void $ requestCompletions (TextDocumentIdentifier uri) position (liftIO . respond . Completions)
 
 -- | Requests the completions for the position in the document.

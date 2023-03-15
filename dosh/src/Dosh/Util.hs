@@ -14,7 +14,7 @@ import Development.IDE (Priority, WithPriority (..))
 import Dosh.Prelude
 import Graphics.Vty (Key (..), Modifier (..))
 import Language.LSP.Types (Diagnostic)
-import Language.LSP.Types.Lens (HasLine (line), range, start)
+import Language.LSP.Types.Lens (HasLine (line), character, range, start)
 import Reflex
 import Reflex.Vty
 
@@ -115,3 +115,6 @@ instance Show (WithPriority Text) where
 
 diagnosticLine :: Diagnostic -> Int
 diagnosticLine = fromIntegral . view (range . start . line)
+
+diagnosticChar :: Diagnostic -> Int
+diagnosticChar = fromIntegral . view (range . start . character)

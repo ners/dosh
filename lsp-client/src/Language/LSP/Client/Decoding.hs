@@ -1,19 +1,24 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE TypeInType #-}
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 module Language.LSP.Client.Decoding where
 
 import Control.Exception (catch, throw)
+import Control.Monad (liftM2)
 import Data.Aeson (Result (Error, Success), Value, decode)
 import Data.Aeson.Types (parse)
 import Data.ByteString.Lazy (LazyByteString)
 import Data.ByteString.Lazy.Char8 qualified as LazyByteString
+import Data.Dependent.Map (DMap)
+import Data.Dependent.Map qualified as DMap
 import Data.Functor
 import Data.Functor.Const
 import Data.Functor.Product (Product (Pair))
-import Data.IxMap (IxMap, emptyIxMap, insertIxMap, pickFromIxMap)
-import Data.Maybe (fromJust)
+import Data.IxMap (IxMap)
+import Data.IxMap qualified as IxMap
+import Data.Maybe (fromJust, fromMaybe)
 import Language.LSP.Client.Exceptions
 import Language.LSP.Types
 import System.IO (Handle, hGetLine)
@@ -41,23 +46,36 @@ getHeaders h = do
         | isEOFError e = throw UnexpectedServerTermination
         | otherwise = throw e
 
--- type RequestMap = IxMap LspId (SMethod :: Method 'FromClient 'Request -> Type)
---
-type RequestMap = IxMap LspId Callback
+type RequestMap = IxMap LspId RequestCallback
 
--- data RequestMap where
---  RequestMap :: IxMap LspId Callback -> RequestMap
+emptyRequestMap :: RequestMap
+emptyRequestMap = IxMap.emptyIxMap
 
-data Callback (m :: Method 'FromClient 'Request) = Callback
-    { callback :: ResponseMessage m -> IO ()
-    , method :: SMethod m
+data RequestCallback (m :: Method 'FromClient 'Request) = RequestCallback
+    { requestCallback :: ResponseMessage m -> IO ()
+    , requestMethod :: SMethod m
     }
 
-newRequestMap :: RequestMap
-newRequestMap = emptyIxMap
+type NotificationMap = DMap SMethod NotificationCallback
 
-updateRequestMap :: RequestMap -> LspId m -> Callback m -> Maybe RequestMap
-updateRequestMap reqMap id callback = insertIxMap id callback reqMap
+emptyNotificationMap :: NotificationMap
+emptyNotificationMap = mempty
+
+newtype NotificationCallback (m :: Method 'FromServer 'Notification) = NotificationCallback
+    { notificationCallback :: Message m -> IO ()
+    }
+
+instance Semigroup (NotificationCallback m) where
+    (NotificationCallback c1) <> (NotificationCallback c2) = NotificationCallback $ liftM2 (*>) c1 c2
+
+instance Monoid (NotificationCallback m) where
+    mempty = NotificationCallback (const $ pure ())
+
+updateRequestMap :: LspId m -> RequestCallback m -> RequestMap -> RequestMap
+updateRequestMap = ((fromMaybe (error "updateRequestMap: duplicate key registration") .) .) . IxMap.insertIxMap
+
+updateNotificationMap :: SMethod m -> NotificationCallback m -> NotificationMap -> NotificationMap
+updateNotificationMap = DMap.insertWith' (<>)
 
 -- getRequestMap :: [FromClientMessage] -> RequestMap
 -- getRequestMap = foldl' helper emptyIxMap
@@ -77,13 +95,13 @@ decodeFromServerMsg bytes reqMap = unP $ parse p obj
   where
     obj = fromJust $ decode bytes :: Value
     p = parseServerMessage $ \(lid :: LspId m) ->
-        let (maybeCallback, newMap) = pickFromIxMap lid reqMap
-         in maybeCallback <&> \c -> (c.method, Pair c (Const newMap))
+        let (maybeCallback, newMap) = IxMap.pickFromIxMap lid reqMap
+         in maybeCallback <&> \c -> (c.requestMethod, Pair c (Const newMap))
     -- case maybeCallback of
     --       Nothing -> Nothing
     --       Just m -> Just (m, Pair m (Const newMap))
     unP (Success (FromServerMess m msg)) = ((FromServerMess m msg, pure ()), reqMap)
-    unP (Success (FromServerRsp (Pair c (Const newMap)) msg)) = ((FromServerRsp c.method msg, c.callback msg), newMap)
+    unP (Success (FromServerRsp (Pair c (Const newMap)) msg)) = ((FromServerRsp c.requestMethod msg, c.requestCallback msg), newMap)
     unP (Error e) = error $ "Error decoding " <> show obj <> " :" <> e
 
 {-

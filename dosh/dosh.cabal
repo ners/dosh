@@ -75,6 +75,7 @@ library
         ghc-syntax-highlighter,
         ghcide,
         haskell-language-server,
+        hie-bios,
         lens,
         lsp-client,
         lsp-types,

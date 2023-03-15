@@ -1,27 +1,32 @@
-{-# OPTIONS_GHC -Wno-name-shadowing #-}
 {-# LANGUAGE LambdaCase #-}
+{-# OPTIONS_GHC -Wno-name-shadowing #-}
 
 module Dosh.Cell where
 
 import Control.Monad.Fix
 import Data.Default (Default)
 import Data.Generics.Labels ()
+import Data.List (sortBy)
+import Data.List.Extra (groupOn)
+import Data.Ord (comparing)
 import Data.Text qualified as Text
 import Data.Text.CodeZipper qualified as CZ
 import Data.Text.Encoding qualified as Text
+import Data.Text.Zipper (Span (Span))
+import Data.Tuple.Extra (thd3)
 import Data.UUID (UUID)
 import Data.UUID qualified as UUID
 import Data.UUID.V4 qualified as UUID
 import Dosh.Prelude
 import Dosh.Util
 import Graphics.Vty qualified as V
+import Language.Haskell.TH.Syntax (thenCmp)
 import Language.LSP.Types (Diagnostic, DiagnosticSeverity (..))
+import Language.LSP.Types.Lens (message, severity)
 import Reflex
 import Reflex.Vty
 import Reflex.Vty.Widget.Input.Code
 import Skylighting (TokenType)
-import Data.Text.Zipper (Span(Span))
-import Language.LSP.Types.Lens (message, severity)
 
 type CodeZipper = CZ.CodeZipper TokenType
 
@@ -118,12 +123,26 @@ cell c = do
         outPrompt = "Out[" <> tshow c.number <> "]: "
         errPrompt = "Err[" <> tshow c.number <> "]: "
         virtualLines :: [(Int, [Span V.Attr])]
-        virtualLines = foldr ((<>) . diagLines) [] c.diagnostics
-            where
-                diagLines :: Diagnostic -> [(Int, [Span V.Attr])]
-                diagLines d = Text.splitOn "\n" (d ^. message) <&> \l -> (diagnosticLine d, [Span (diagAttr d) l])
-                diagAttr :: Diagnostic -> V.Attr
-                diagAttr = view severity >>> \case
+        virtualLines = concatMap diagLines $ groupOn diagnosticLine $ sortBy diagOrd c.diagnostics
+          where
+            diagOrd :: Diagnostic -> Diagnostic -> Ordering
+            diagOrd d1 d2 = comparing diagnosticLine d1 d2 `thenCmp` comparing diagnosticChar d1 d2
+            diagLines :: [Diagnostic] -> [(Int, [Span V.Attr])]
+            diagLines =
+                thd3
+                    . foldl'
+                        ( \(padWidth, pads, lines) d ->
+                            let c = diagnosticChar d
+                                newPads = [Span V.currentAttr ""]
+                             in ( c
+                                , pads <> newPads
+                                , lines <> (Text.lines (d ^. message) <&> \l -> (diagnosticLine d, [Span (diagAttr d) l]))
+                                )
+                        )
+                        (0, [], [])
+            diagAttr :: Diagnostic -> V.Attr
+            diagAttr =
+                view severity >>> \case
                     Just DsError -> V.withForeColor V.currentAttr V.red
                     Just DsWarning -> V.withForeColor V.currentAttr V.magenta
                     _ -> V.currentAttr
@@ -167,8 +186,8 @@ cell c = do
                     _ -> pure ()
     grout (fixed $ pure $ length virtualLines + CZ.lines c.input) $ row $ do
         grout (fixed $ pure $ Text.length inPrompt) $ text $ pure inPrompt
-        --let w = length (show $ lastLine c)
-        --grout (fixed $ pure $ w + 1) $ col $ forM_ [firstLine c .. lastLine c] $ \l ->
+        -- let w = length (show $ lastLine c)
+        -- grout (fixed $ pure $ w + 1) $ col $ forM_ [firstLine c .. lastLine c] $ \l ->
         --    let t = tshow l
         --        pad = w - Text.length t
         --        tp = Text.replicate pad " " <> t

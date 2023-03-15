@@ -13,7 +13,6 @@ import Data.Sequence (Seq)
 import Data.Sequence qualified as Seq
 import Data.Sequence.Zipper (SeqZipper (..))
 import Data.Sequence.Zipper qualified as SZ
-import Data.Text qualified as Text
 import Data.Text.CodeZipper qualified as CZ
 import Data.These (These (..))
 import Data.Traversable (for)
@@ -28,7 +27,6 @@ import Dosh.LSP.Document (ChunkMetadata, ChunkType (..), Document, newDocument)
 import Dosh.LSP.Document qualified as LSP.Document
 import Dosh.Prelude
 import Dosh.Util
-import Language.LSP.Types (filePathToUri)
 import Language.LSP.Types qualified as LSP
 import Reflex hiding (Query, Response)
 import Reflex.Vty hiding (Query, Response)
@@ -46,7 +44,7 @@ data Notebook = Notebook
 newNotebook :: MonadIO m => Text -> Text -> m Notebook
 newNotebook language ext = do
     uid <- liftIO UUID.nextRandom
-    let uri = filePathToUri $ Text.unpack $ UUID.toText uid <> "." <> ext
+    let uri = LSP.Uri $ "file://" <> UUID.toText uid <> "." <> ext
     Notebook
         { uid
         , cells = mempty
@@ -164,6 +162,7 @@ handleCellEvent _ lsp c@Cell{uid, input} (UpdateCellInput update) n = do
     pure $
         n
             & #cells . ix uid . #input .~ newZipper
+            & #cells . traverse . #diagnostics .~ []
             & filtered (const $ row /= newRow)
                 %~ ( updateLineNumbers
                         >>> #document . #chunks . #after %~ updateChunkLines
@@ -279,13 +278,13 @@ handleLspResponse
     -> m Notebook
 handleLspResponse LSP.DocumentContents{..} = pure . (#document . #contents .~ contents)
 handleLspResponse LSP.Diagnostics{..} = pure . (clearDiagnostics >>> setDiagnostics)
-    where
-        clearDiagnostics :: Notebook -> Notebook
-        clearDiagnostics = #cells . traverse . #diagnostics .~ []
-        setDiagnostics :: Notebook -> Notebook
-        setDiagnostics = foldr (.) id $ setDiagnostic <$> diagnostics
-        setDiagnostic :: LSP.Diagnostic -> Notebook -> Notebook
-        setDiagnostic d = #cells . traverse . filtered (hasDiagnostic d) %~ #diagnostics %~ (d:)
-        hasDiagnostic :: LSP.Diagnostic -> Cell -> Bool
-        hasDiagnostic (diagnosticLine -> l) c = firstLine c <= l && lastLine c >= l
+  where
+    clearDiagnostics :: Notebook -> Notebook
+    clearDiagnostics = #cells . traverse . #diagnostics .~ []
+    setDiagnostics :: Notebook -> Notebook
+    setDiagnostics = foldr (.) id $ setDiagnostic <$> diagnostics
+    setDiagnostic :: LSP.Diagnostic -> Notebook -> Notebook
+    setDiagnostic d = #cells . traverse . filtered (hasDiagnostic d) %~ #diagnostics %~ (d :)
+    hasDiagnostic :: LSP.Diagnostic -> Cell -> Bool
+    hasDiagnostic (diagnosticLine -> l) c = firstLine c <= l && lastLine c >= l
 handleLspResponse LSP.Completions{} = pure

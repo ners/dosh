@@ -55,6 +55,7 @@ library
         aeson-pretty,
         co-log-core,
         data-default,
+        dependent-map,
         directory,
         filepath,
         generic-lens,

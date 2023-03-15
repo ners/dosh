@@ -4,7 +4,6 @@ import Data.Text.IO qualified as Text
 import Dosh.GHC.Client qualified as GHC
 import Dosh.GHC.Server qualified as GHC
 import Dosh.LSP.Client qualified as LSP
-import Dosh.LSP.Document
 import Dosh.LSP.Server qualified as LSP
 import Dosh.Notebook
 import Dosh.Prelude
@@ -22,10 +21,6 @@ main = mainWidget $ do
     liftIO $ do
         lspClient.request LSP.Initialize
         lspClient.request $ LSP.CreateDocument initialNotebook.document
-        forkIO $ forever $ do
-            threadDelay 1_000_000
-            lspClient.request LSP.GetDocumentContents{uri = initialNotebook.document.uri}
-            lspClient.request LSP.GetDiagnostics{uri = initialNotebook.document.uri}
     performEvent $ lspClient.onLog <&> \l -> liftIO $ Text.appendFile "hls-log.log" $ tshow l <> "\n"
     performEvent $ lspClient.onError <&> \e -> liftIO $ Text.appendFile "hls-error.log" $ tshow e <> "\n"
     initManager_ $ mdo
