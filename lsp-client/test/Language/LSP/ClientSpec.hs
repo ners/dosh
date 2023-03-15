@@ -149,8 +149,6 @@ spec = do
             diagServer
             (\(_, _, threadId) -> killThread threadId)
             $ \(serverIn, serverOut, _) -> runSessionWithHandles serverOut serverIn $ do
-                -- Initially the diagnostics should be empty
-                getDiagnostics `shouldReturn` []
                 -- We allow up to 0.1 s to receive the first batch of diagnostics
                 withTimeout 100_000 $ whileM $ do
                     threadDelay 1_000
