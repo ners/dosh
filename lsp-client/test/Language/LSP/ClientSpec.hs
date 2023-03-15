@@ -188,4 +188,4 @@ spec = do
                 threadDelay 100_000
                 doc <- LSP.createDoc file "haskell" ""
                 threadDelay 100_000
-                LSP.documentContents doc `shouldReturn` ""
+                LSP.documentContents doc `shouldReturn` (Just "")
