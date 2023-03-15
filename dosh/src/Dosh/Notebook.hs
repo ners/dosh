@@ -13,6 +13,7 @@ import Data.Sequence (Seq)
 import Data.Sequence qualified as Seq
 import Data.Sequence.Zipper (SeqZipper (..))
 import Data.Sequence.Zipper qualified as SZ
+import Data.Text qualified as Text
 import Data.Text.CodeZipper qualified as CZ
 import Data.These (These (..))
 import Data.Traversable (for)
@@ -28,6 +29,7 @@ import Dosh.LSP.Document qualified as LSP.Document
 import Dosh.Prelude
 import Dosh.Util
 import GHC.Exts (IsList (toList))
+import Language.LSP.Types (filePathToUri)
 import Language.LSP.Types qualified as LSP
 import Reflex hiding (Query, Response)
 import Reflex.Vty hiding (Query, Response)
@@ -45,7 +47,7 @@ data Notebook = Notebook
 newNotebook :: MonadIO m => Text -> Text -> m Notebook
 newNotebook language ext = do
     uid <- liftIO UUID.nextRandom
-    let uri = LSP.Uri $ "file:///" <> UUID.toText uid <> "." <> ext
+    let uri = filePathToUri $ Text.unpack $ UUID.toText uid <> "." <> ext
     Notebook
         { uid
         , cells = mempty

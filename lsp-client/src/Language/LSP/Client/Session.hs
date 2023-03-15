@@ -164,11 +164,12 @@ handleServerMessage (FromServerMess SWorkspaceApplyEdit r) = do
                     )
     sendResponse
         r
-        ApplyWorkspaceEditResponseBody
-            { _applied = True
-            , _failureReason = Nothing
-            , _failedChange = Nothing
-            }
+        $ Right
+            ApplyWorkspaceEditResponseBody
+                { _applied = True
+                , _failureReason = Nothing
+                , _failedChange = Nothing
+                }
   where
     logger :: LogAction (StateT VFS Identity) (WithSeverity VfsLog)
     logger = LogAction $ \(WithSeverity msg sev) -> case sev of Error -> error $ show msg; _ -> pure ()
@@ -216,7 +217,7 @@ handleServerMessage (FromServerMess SWorkspaceApplyEdit r) = do
     mergeParams params =
         let events = concat $ toList $ toList . (^. contentChanges) <$> params
          in DidChangeTextDocumentParams (head params ^. textDocument) (List events)
-handleServerMessage (FromServerMess SWindowWorkDoneProgressCreate req) = sendResponse req Empty
+handleServerMessage (FromServerMess SWindowWorkDoneProgressCreate req) = sendResponse req $ Right Empty
 handleServerMessage _ = pure ()
 
 overTVar :: (a -> a) -> TVar a -> STM a
@@ -245,9 +246,12 @@ sendRequest method params callback = do
 sendResponse
     :: forall (m :: Method 'FromServer 'Request)
      . RequestMessage m
-    -> ResponseResult m
+    -> Either ResponseError (ResponseResult m)
     -> Session ()
-sendResponse req res = sendMessage $ FromClientRsp (req ^. LSP.method) $ ResponseMessage (req ^. jsonrpc) (Just $ req ^. LSP.id) (Right res)
+sendResponse req =
+    sendMessage
+        . FromClientRsp (req ^. LSP.method)
+        . ResponseMessage (req ^. jsonrpc) (Just $ req ^. LSP.id)
 
 -- | Sends a request to the server and waits for its response.
 request

@@ -60,18 +60,16 @@ server = do
             hPut outWrite c
         forkIO $ ghcide recorder inRead' outWrite'
         pure (inWrite, outRead)
-    i <- newEmptyMVar
-    o <- newEmptyMVar
+    sessionActions <- newChan
     liftIO $
         forkIO $
             LSP.runSessionWithHandles serverOutput serverInput $
                 forever $ do
-                    a <- takeMVar i
-                    result <- a `catch` (liftIO . reportError)
-                    putMVar o result
+                    action <- readChan sessionActions
+                    action `catch` (liftIO . reportError)
     pure
         Server
-            { input = putMVar i >>> (*> takeMVar o)
+            { input = writeChan sessionActions
             , error
             , log
             }
