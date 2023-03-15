@@ -1,7 +1,5 @@
 module Main where
 
-import Data.Sequence.Zipper (SeqZipper (after, before))
-import Data.Text qualified as Text
 import Data.Text.IO qualified as Text
 import Dosh.GHC.Client qualified as GHC
 import Dosh.GHC.Server qualified as GHC
@@ -33,14 +31,4 @@ main = mainWidget $ do
     initManager_ $ mdo
         dn :: Dynamic t Notebook <- holdDyn initialNotebook u
         u :: Event t Notebook <- networkView (notebook ghcClient lspClient <$> dn) >>= switchHold never
-        grout flex $ col $ do
-            grout (fixed $ pure 1) $ text $ pure "before:"
-            grout flex $ text $ current $ Text.unlines . fmap tshow . toList . before . chunks . document <$> dn
-            grout (fixed $ pure 1) $ text $ pure "after:"
-            grout flex $ text $ current $ Text.unlines . fmap tshow . toList . after . chunks . document <$> dn
-            grout (fixed $ pure 1) $ text $ pure "content:"
-            grout flex $ text $ current $ withLineNumbers . contents . document <$> dn
         void <$> ctrldPressed
-  where
-    withLineNumbers :: Text -> Text
-    withLineNumbers = Text.intercalate "\n" . zipWith (\ln t -> tshow ln <> " " <> t) [0 :: Int ..] . Text.splitOn "\n"
