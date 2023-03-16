@@ -24,9 +24,13 @@ import Test.Hspec hiding (shouldReturn)
 import Test.Hspec qualified as Hspec
 import Test.Hspec.QuickCheck
 import Test.QuickCheck
-import UnliftIO (MonadIO (..), MonadUnliftIO, fromEither, race)
+import Language.LSP.Types.Lens qualified as LSP
+import UnliftIO (MonadIO (..), MonadUnliftIO, fromEither, race, newTVarIO, readTVarIO)
 import UnliftIO.Concurrent
 import Prelude hiding (log)
+import Language.LSP.Types qualified as LSP
+import Data.Coerce (coerce)
+import Control.Lens ((^.))
 
 shouldReturn :: (MonadIO m, Show a, Eq a) => m a -> a -> m ()
 shouldReturn a expected = a >>= liftIO . flip Hspec.shouldBe expected
@@ -131,6 +135,11 @@ spec = do
             diagServer
             (\(_, _, threadId) -> killThread threadId)
             $ \(serverIn, serverOut, _) -> runSessionWithHandles serverOut serverIn $ do
+                diagnostics <- newTVarIO @_ @[Diagnostic] []
+                let getDiagnostics = readTVarIO diagnostics
+                    setDiagnostics = writeTVarIO diagnostics
+                receiveNotification LSP.STextDocumentPublishDiagnostics $ \msg ->
+                    setDiagnostics $ coerce $ msg ^. LSP.params . LSP.diagnostics
                 -- We allow up to 0.1 s to receive the first batch of diagnostics
                 withTimeout 100_000 $ whileM $ do
                     threadDelay 1_000
@@ -160,8 +169,8 @@ spec = do
             (\(_, _, threadId) -> killThread threadId)
             $ \(serverIn, serverOut, _) -> runSessionWithHandles serverOut serverIn $ do
                 doc <- LSP.createDoc "TestFile.hs" "haskell" ""
-                LSP.documentContents doc `shouldReturn` (Just "")
+                LSP.documentContents doc `shouldReturn` Just ""
                 changeDoc doc [TextDocumentContentChangeEvent Nothing Nothing "foo"]
-                LSP.documentContents doc `shouldReturn` (Just "foo")
+                LSP.documentContents doc `shouldReturn` Just "foo"
                 closeDoc doc
                 LSP.documentContents doc `shouldReturn` Nothing

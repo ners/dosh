@@ -43,6 +43,7 @@ common common
         aeson,
         base,
         bytestring,
+        lens,
         lsp-types,
 
 library
@@ -59,7 +60,6 @@ library
         filepath,
         generic-lens,
         hashable,
-        lens,
         lifted-async,
         lsp,
         mtl,
