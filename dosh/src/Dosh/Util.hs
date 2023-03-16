@@ -104,14 +104,17 @@ newlined t
 withTimeout :: (MonadUnliftIO m, MonadFail m) => Int -> m a -> m a
 withTimeout = ((maybe (fail "Timeout exceeded") pure =<<) .) . timeout
 
+prependAndPadLines :: Text -> Text -> Text
+prependAndPadLines x = (x <>) . Text.drop len . Text.intercalate "\n" . fmap (pad <>) . Text.splitOn "\n"
+  where
+    len = Text.length x
+    pad = Text.replicate len " "
+
 instance Show (WithPriority Text) where
-    show WithPriority{..} = Text.unpack prioPayload
+    show WithPriority{..} = Text.unpack $ prependAndPadLines prio payload
       where
-        padWidth = (1 +) . maximum $ Text.length . tshow <$> [minBound @Priority .. maxBound]
-        pad = Text.replicate padWidth " "
-        paddedPayload = Text.intercalate "\n" $ (pad <>) <$> Text.splitOn "\n" payload
-        prio = tshow priority
-        prioPayload = prio <> Text.drop (Text.length prio) paddedPayload
+        len = (1 +) . maximum $ Text.length . tshow <$> [minBound @Priority .. maxBound]
+        prio = Text.justifyLeft len ' ' $ tshow priority
 
 diagnosticLine :: Diagnostic -> Int
 diagnosticLine = fromIntegral . view (range . start . line)

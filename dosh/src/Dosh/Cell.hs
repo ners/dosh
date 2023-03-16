@@ -133,10 +133,16 @@ cell c = do
                     . foldl'
                         ( \(padWidth, pads, lines) d ->
                             let c = diagnosticChar d
-                                newPads = [Span V.currentAttr ""]
-                             in ( c
-                                , pads <> newPads
-                                , lines <> (Text.lines (d ^. message) <&> \l -> (diagnosticLine d, [Span (diagAttr d) l]))
+                                deltaC = c - padWidth
+                                BoxStyle{..} = roundedBoxStyle
+                                newPads = [Span V.currentAttr spaces | let spaces = Text.replicate deltaC " ", deltaC > 0]
+                                newPipe = [Span (diagAttr d) (Text.singleton _boxStyle_e) | deltaC > 0]
+                                newLines =
+                                    Text.lines (prependAndPadLines (Text.pack [_boxStyle_sw, _boxStyle_s, ' ']) $ d ^. message) <&> \l ->
+                                        (diagnosticLine d, pads <> newPads <> [Span (diagAttr d) l])
+                             in ( c + 1
+                                , pads <> newPads <> newPipe
+                                , newLines <> lines
                                 )
                         )
                         (0, [], [])
