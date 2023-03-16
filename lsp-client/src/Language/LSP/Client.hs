@@ -92,14 +92,11 @@ methodType STextDocumentPublishDiagnostics = Notification
 methodType SCancelRequest = Notification
 methodType (SCustomMethod _) = undefined
 
-runSessionWithHandles :: Handle -> Handle -> Session () -> IO ()
+runSessionWithHandles :: Handle -> Handle -> Session a -> IO a
 runSessionWithHandles input output action = initVFS $ \vfs -> do
     initialState <- defaultSessionState vfs
     flip runReaderT initialState $ do
-        let stop :: Session () = do
-                shouldStop <- asks shouldStop
-                liftIO $ atomically $ readTVar shouldStop >>= check
-        actionResult <- race (race stop (catch @_ @SomeException action $ error . show)) $ do
+        actionResult <- race (catch @_ @SomeException action $ error . show) $ do
             let send = flip (catch @_ @SomeException) (error . show) $ do
                     message <- asks outgoing >>= liftIO . atomically . readTQueue
                     liftIO $ LazyByteString.hPut output $ encode message
@@ -121,9 +118,4 @@ runSessionWithHandles input output action = initVFS $ \vfs -> do
             concurrently_ (forever send) (forever receive)
         case actionResult of
             Right _ -> error "send/receive thread should not exit!"
-            Left (Left ()) ->
-                -- Ended because `shutdown` was called
-                pure ()
-            Left (Right ()) ->
-                -- Ended because action is over
-                pure ()
+            Left res -> pure res
