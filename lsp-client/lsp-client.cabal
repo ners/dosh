@@ -43,8 +43,8 @@ common common
         aeson,
         base,
         bytestring,
+        lens,
         lsp-types,
-        text,
 
 library
     import:           common
@@ -60,11 +60,11 @@ library
         filepath,
         generic-lens,
         hashable,
-        lens,
         lifted-async,
         lsp,
         mtl,
         stm,
+        text,
         unliftio,
         unordered-containers,
     if os(windows)
@@ -89,11 +89,9 @@ test-suite spec
         QuickCheck,
         extra,
         ghcide,
-        haskell-language-server,
         hspec,
         lsp-client,
         process,
         unliftio,
-        uuid
     other-modules:
         Language.LSP.ClientSpec
