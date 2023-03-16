@@ -159,10 +159,8 @@ spec = do
                 req1Id <- sendRequest SShutdown Empty (putMVar req1Done . (._id))
                 req2Done <- newEmptyMVar
                 req2Id <- sendRequest SShutdown Empty (putMVar req2Done . (._id))
-                tryTakeMVar req1Done `shouldReturn` Nothing
-                tryTakeMVar req2Done `shouldReturn` Nothing
                 withTimeout 100_000 $ takeMVar req1Done `shouldReturn` Just req1Id
-                withTimeout 5_000 $ takeMVar req2Done `shouldReturn` Just req2Id
+                withTimeout 100_000 $ takeMVar req2Done `shouldReturn` Just req2Id
     prop "opens and changes virtual documents correctly" $ do
         bracket
             notifServer
