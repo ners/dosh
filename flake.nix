@@ -58,6 +58,12 @@
                 mmorph = doJailbreak super.mmorph;
                 reflex = doJailbreak super.reflex_0_9_0_0;
                 string-qq = doJailbreak super.string-qq;
+              } // lib.optionalAttrs (ghcVersionAtLeast "9.6") {
+                commutative-semigroups = doJailbreak super.commutative-semigroups;
+                ed25519 = doJailbreak super.ed25519;
+                ghc-trace-events = doJailbreak super.ghc-trace-events;
+                hie-compat = doJailbreak super.hie-compat;
+                indexed-traversable = doJailbreak super.indexed-traversable;
               });
         };
         outputsFor =
@@ -80,13 +86,6 @@
                 pkgs.cachix
                 pkgs.nixpkgs-fmt
               ];
-              shellHook = ''
-                export PATH=${
-                  pkgs.writeShellScriptBin "haskell-language-server-wrapper" ''
-                    tee -a vim-hls-input.log | ${ps.haskell-language-server}/bin/haskell-language-server-wrapper "$@" | tee -a vim-hls-output.log
-                  ''
-                }/bin:$PATH
-              '';
             };
             formatter = pkgs.nixpkgs-fmt;
           };

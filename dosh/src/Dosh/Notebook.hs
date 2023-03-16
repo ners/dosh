@@ -27,7 +27,8 @@ import Dosh.LSP.Document (ChunkMetadata, ChunkType (..), Document, newDocument)
 import Dosh.LSP.Document qualified as LSP.Document
 import Dosh.Prelude
 import Dosh.Util
-import Language.LSP.Types qualified as LSP
+import Language.LSP.Types qualified as LSP hiding (line)
+import Language.LSP.Types.Lens qualified as LSP
 import Reflex hiding (Query, Response)
 import Reflex.Vty hiding (Query, Response)
 
@@ -153,27 +154,42 @@ handleCellEvent _ lsp c@Cell{uid, input} (UpdateCellInput update) n = do
             LSP.ChangeDocument
                 { uri = n.document.uri
                 , range =
-                    LSP.Range
-                        { _start = LSP.Position{_line = fromIntegral $ firstLine c, _character = 0}
-                        , _end = LSP.Position{_line = fromIntegral $ lastLine c, _character = 0}
-                        }
-                , contents = newZipperT
+                    Just
+                        LSP.Range
+                            { _start = case update of
+                                Insert _ -> position
+                                DeleteLeft -> newPosition
+                                DeleteRight -> position
+                            , _end = case update of
+                                Insert _ -> position
+                                DeleteLeft -> position
+                                DeleteRight ->
+                                    let deltaLines = fromIntegral $ CZ.lines input - CZ.lines newZipper
+                                     in position
+                                            & if deltaLines == 0
+                                                then LSP.character %~ (+ 1)
+                                                else LSP.line %~ (+ deltaLines) >>> LSP.character .~ 0
+                            }
+                , contents = case update of
+                    Insert t -> t
+                    DeleteLeft -> ""
+                    DeleteRight -> ""
                 }
     pure $
         n
             & #cells . ix uid . #input .~ newZipper
-            & #cells . traverse . #diagnostics .~ []
             & filtered (const $ row /= newRow)
                 %~ ( updateLineNumbers
                         >>> #document . #chunks . #after %~ updateChunkLines
                    )
   where
     row = firstLine c + CZ.row input
-    -- col = CZ.col input
+    col = CZ.col input
+    position = LSP.Position (fromIntegral row) (fromIntegral col)
     newZipper = updateZipper update input
-    newZipperT = CZ.toText newZipper
     newRow = firstLine c + CZ.row newZipper
-    -- newCol = CZ.col newZipper
+    newCol = CZ.col newZipper
+    newPosition = LSP.Position (fromIntegral newRow) (fromIntegral newCol)
     -- TODO: can we leverage a finger tree to do this automatically?
     updateLineNumbers :: Notebook -> Notebook
     updateLineNumbers n = flip (`foldl'` n) (Seq.zip n.cellOrder.after $ Seq.drop 1 n.cellOrder.after) $
@@ -195,10 +211,11 @@ handleCellEvent ghc lsp c@Cell{uid, input} EvaluateCell n = do
             LSP.ChangeDocument
                 { uri = n.document.uri
                 , range =
-                    LSP.Range
-                        { _start = LSP.Position{_line = fromIntegral $ lastLine c + 1, _character = 0}
-                        , _end = LSP.Position{_line = fromIntegral $ lastLine c + 1, _character = 0}
-                        }
+                    Just
+                        LSP.Range
+                            { _start = LSP.Position{_line = fromIntegral $ lastLine c + 1, _character = 0}
+                            , _end = LSP.Position{_line = fromIntegral $ lastLine c + 2, _character = 0}
+                            }
                 , contents = "\n\n"
                 }
     let content = CZ.toText input
@@ -276,8 +293,8 @@ handleLspResponse
     => LSP.Response
     -> Notebook
     -> m Notebook
-handleLspResponse LSP.DocumentContents{..} = pure . (#document . #contents .~ contents)
-handleLspResponse LSP.Diagnostics{..} = pure . (clearDiagnostics >>> setDiagnostics)
+handleLspResponse LSP.DocumentContents{..} = #document . #contents .~ contents >>> pure
+handleLspResponse LSP.Diagnostics{..} = clearDiagnostics >>> setDiagnostics >>> pure
   where
     clearDiagnostics :: Notebook -> Notebook
     clearDiagnostics = #cells . traverse . #diagnostics .~ []

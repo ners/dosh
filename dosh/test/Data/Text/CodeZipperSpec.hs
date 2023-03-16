@@ -163,6 +163,10 @@ spec = do
     it "correctly handles movement" $ property $ goMove @Printable
     it "is unchanged by movement" $ property $ unchangedByMovement @Printable
     it "inserts text correctly" $ property $ insertText @Printable
+    it "correctly handles empty lines" $ property $ do
+        let cz :: CodeZipper Printable
+            cz = mempty{linesBefore = [[Token Graphic "a"]], linesAfter = [[Token Graphic "b"]]}
+        toText cz `shouldBe` "a\n\nb"
 
 isEquivalentTo :: (Eq t, Show t) => CodeZipper t -> CodeZipper t -> Expectation
 a `isEquivalentTo` b = do

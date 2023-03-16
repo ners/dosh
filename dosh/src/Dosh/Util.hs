@@ -118,3 +118,9 @@ diagnosticLine = fromIntegral . view (range . start . line)
 
 diagnosticChar :: Diagnostic -> Int
 diagnosticChar = fromIntegral . view (range . start . character)
+
+withLineNumbers :: Text -> Text
+withLineNumbers t = Text.intercalate "\n" $ zipWith (\i t -> Text.justifyRight w ' ' (tshow i) <> " " <> t) [0 :: Int ..] ls
+  where
+    ls = Text.splitOn "\n" t
+    w = Text.length $ tshow $ length ls

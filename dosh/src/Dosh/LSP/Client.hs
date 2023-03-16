@@ -21,7 +21,7 @@ import Prelude hiding (id)
 data Request
     = Initialize {}
     | CreateDocument {doc :: Document}
-    | ChangeDocument {uri :: Uri, range :: Range, contents :: Text}
+    | ChangeDocument {uri :: Uri, range :: Maybe Range, contents :: Text}
     | GetDocumentContents {uri :: Uri}
     | GetCompletions {uri :: Uri, position :: Position}
 
@@ -71,7 +71,7 @@ handleRequest _ ChangeDocument{..} =
     LSP.changeDoc
         (TextDocumentIdentifier uri)
         [ TextDocumentContentChangeEvent
-            { _range = Just range
+            { _range = range
             , _rangeLength = Nothing
             , _text = contents
             }

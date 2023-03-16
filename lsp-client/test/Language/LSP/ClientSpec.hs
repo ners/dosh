@@ -2,6 +2,7 @@ module Language.LSP.ClientSpec where
 
 import Control.Arrow ((>>>))
 import Control.Exception
+import Control.Lens ((^.))
 import Control.Monad
 import Control.Monad.Extra (whenMaybeM, whileJustM, whileM)
 import Data.Aeson ((.:))
@@ -10,6 +11,7 @@ import Data.Aeson.Types (parseMaybe)
 import Data.ByteString (ByteString, hGetSome)
 import Data.ByteString.Builder.Extra (defaultChunkSize)
 import Data.ByteString.Lazy qualified as LazyByteString
+import Data.Coerce (coerce)
 import Data.Maybe (fromJust)
 import Development.IDE
 import Language.LSP.Client
@@ -18,19 +20,17 @@ import Language.LSP.Client.Encoding (encode)
 import Language.LSP.Client.Session
 import Language.LSP.Client.Session qualified as LSP
 import Language.LSP.Types
+import Language.LSP.Types qualified as LSP
+import Language.LSP.Types.Lens qualified as LSP
 import System.IO
 import System.Process (createPipe)
 import Test.Hspec hiding (shouldReturn)
 import Test.Hspec qualified as Hspec
 import Test.Hspec.QuickCheck
 import Test.QuickCheck
-import Language.LSP.Types.Lens qualified as LSP
-import UnliftIO (MonadIO (..), MonadUnliftIO, fromEither, race, newTVarIO, readTVarIO)
+import UnliftIO (MonadIO (..), MonadUnliftIO, fromEither, newTVarIO, race, readTVarIO)
 import UnliftIO.Concurrent
 import Prelude hiding (log)
-import Language.LSP.Types qualified as LSP
-import Data.Coerce (coerce)
-import Control.Lens ((^.))
 
 shouldReturn :: (MonadIO m, Show a, Eq a) => m a -> a -> m ()
 shouldReturn a expected = a >>= liftIO . flip Hspec.shouldBe expected
@@ -168,7 +168,7 @@ spec = do
             $ \(serverIn, serverOut, _) -> runSessionWithHandles serverOut serverIn $ do
                 doc <- LSP.createDoc "TestFile.hs" "haskell" ""
                 LSP.documentContents doc `shouldReturn` Just ""
-                changeDoc doc [TextDocumentContentChangeEvent Nothing Nothing "foo"]
-                LSP.documentContents doc `shouldReturn` Just "foo"
+                changeDoc doc [TextDocumentContentChangeEvent Nothing Nothing "foo\n\nbar"]
+                LSP.documentContents doc `shouldReturn` Just "foo\n\nbar"
                 closeDoc doc
                 LSP.documentContents doc `shouldReturn` Nothing

@@ -171,10 +171,17 @@ handleServerMessage (FromServerMess SWorkspaceApplyEdit r) = do
         -- if its not open, open it
         unless isOpen $ do
             contents <- maybe (pure "") (liftIO . Text.readFile) (uriToFilePath uri)
-            let item = TextDocumentItem uri "" 0 contents
-                msg = NotificationMessage "2.0" STextDocumentDidOpen (DidOpenTextDocumentParams item)
-            sendMessage $ fromClientNot msg
-            asks vfs >>= liftIO . flip modifyTVarIO (execState $ openVFS logger msg)
+            sendNotification
+                STextDocumentDidOpen
+                DidOpenTextDocumentParams
+                    { _textDocument =
+                        TextDocumentItem
+                            { _uri = uri
+                            , _languageId = ""
+                            , _version = 0
+                            , _text = contents
+                            }
+                    }
 
     getParamsFromTextDocumentEdit :: TextDocumentEdit -> DidChangeTextDocumentParams
     getParamsFromTextDocumentEdit (TextDocumentEdit docId (List edits)) = do
@@ -275,22 +282,15 @@ sendNotification
     => SMethod m
     -> MessageParams m
     -> Session ()
-sendNotification STextDocumentDidOpen params = do
-    let n = NotificationMessage "2.0" STextDocumentDidOpen params
+sendNotification m params = do
+    let n = NotificationMessage "2.0" m params
     vfs <- asks vfs
-    liftIO $ modifyTVarIO vfs (execState $ openVFS mempty n)
+    case m of
+        STextDocumentDidOpen -> liftIO $ modifyTVarIO vfs (execState $ openVFS mempty n)
+        STextDocumentDidClose -> liftIO $ modifyTVarIO vfs (execState $ closeVFS mempty n)
+        STextDocumentDidChange -> liftIO $ modifyTVarIO vfs (execState $ changeFromClientVFS mempty n)
+        _ -> pure ()
     sendMessage $ fromClientNot n
-sendNotification STextDocumentDidClose params = do
-    let n = NotificationMessage "2.0" STextDocumentDidClose params
-    vfs <- asks vfs
-    liftIO $ modifyTVarIO vfs (execState $ closeVFS mempty n)
-    sendMessage $ fromClientNot n
-sendNotification STextDocumentDidChange params = do
-    let n = NotificationMessage "2.0" STextDocumentDidChange params
-    vfs <- asks vfs
-    liftIO $ modifyTVarIO vfs (execState $ changeFromClientVFS mempty n)
-    sendMessage $ fromClientNot n
-sendNotification method params = sendMessage $ fromClientNot $ NotificationMessage "2.0" method params
 
 receiveNotification
     :: forall (m :: Method 'FromServer 'Notification)
@@ -373,11 +373,11 @@ createDoc file language contents = do
         clientCapsSupports =
             clientCaps
                 ^? workspace
-                    . _Just
-                    . didChangeWatchedFiles
-                    . _Just
-                    . dynamicRegistration
-                    . _Just
+                . _Just
+                . didChangeWatchedFiles
+                . _Just
+                . dynamicRegistration
+                . _Just
                 == Just True
         shouldSend = clientCapsSupports && foldl' (\acc r -> acc || regHits r) False regs
 
@@ -434,8 +434,8 @@ getDocumentSymbols :: TextDocumentIdentifier -> Session (Either [DocumentSymbol]
 getDocumentSymbols doc = do
     ResponseMessage _ rspLid res <- request STextDocumentDocumentSymbol (DocumentSymbolParams Nothing Nothing doc)
     case res of
-        Right (InL (List xs)) -> return (Left xs)
-        Right (InR (List xs)) -> return (Right xs)
+        Right (InL (List xs)) -> pure $ Left xs
+        Right (InR (List xs)) -> pure $ Right xs
         Left err -> throw (UnexpectedResponseError (SomeLspId $ fromJust rspLid) err)
 
 -- | The current text contents of a document.
