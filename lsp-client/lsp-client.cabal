@@ -13,8 +13,6 @@ build-type:         Simple
 common common
     default-language: GHC2021
     ghc-options:
-        -O0
-        -j
         -Weverything
         -Wno-unsafe
         -Wno-missing-safe-haskell-mode
@@ -45,6 +43,7 @@ common common
         bytestring,
         lens,
         lsp-types,
+        unliftio,
 
 library
     import:           common
@@ -60,7 +59,6 @@ library
         filepath,
         generic-lens,
         hashable,
-        lifted-async,
         lsp,
         mtl,
         stm,
@@ -90,6 +88,5 @@ test-suite spec
         hspec,
         lsp-client,
         process,
-        unliftio,
     other-modules:
         Language.LSP.ClientSpec

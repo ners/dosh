@@ -147,8 +147,6 @@ handleCellEvent _ _ Cell{uid, firstLine, input} (UpdateCellCursor (moveCursor ->
             & #cells . ix uid . #input .~ newZipper
             & #document %~ LSP.Document.goToLine newRow
 handleCellEvent _ lsp c@Cell{uid, input} (UpdateCellInput update) n = do
-    -- TODO: this is buggy!
-    -- TODO: make LSP updates more efficient by sending smaller ranges
     liftIO $
         lsp.request
             LSP.ChangeDocument
@@ -206,7 +204,7 @@ handleCellEvent _ lsp c@Cell{uid, input} (UpdateCellInput update) n = do
     overTail = (dropping 1 traverse %~)
 handleCellEvent ghc lsp c@Cell{uid, input} EvaluateCell n = do
     -- we send a new-line to LSP so it will be aware of the next cell
-    liftIO $
+    when (shouldCreateNewCell n) $ liftIO $
         lsp.request
             LSP.ChangeDocument
                 { uri = n.document.uri
@@ -214,7 +212,7 @@ handleCellEvent ghc lsp c@Cell{uid, input} EvaluateCell n = do
                     Just
                         LSP.Range
                             { _start = LSP.Position{_line = fromIntegral $ lastLine c + 1, _character = 0}
-                            , _end = LSP.Position{_line = fromIntegral $ lastLine c + 2, _character = 0}
+                            , _end = LSP.Position{_line = fromIntegral $ lastLine c + 1, _character = 0}
                             }
                 , contents = "\n\n"
                 }

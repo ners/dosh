@@ -1,6 +1,5 @@
 module Language.LSP.Client where
 
-import Control.Concurrent.Async.Lifted (concurrently_, race)
 import Control.Concurrent.STM
 import Control.Monad (forever)
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -16,6 +15,7 @@ import Language.LSP.Types (From, Method, MethodType, SMethod (..))
 import Language.LSP.Types qualified as LSP
 import Language.LSP.VFS (initVFS)
 import System.IO (Handle, stdin, stdout)
+import UnliftIO (concurrently_, race)
 import Prelude
 
 runSession :: Session () -> IO ()

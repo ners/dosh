@@ -13,6 +13,7 @@ import Data.ByteString.Builder.Extra (defaultChunkSize)
 import Data.ByteString.Lazy qualified as LazyByteString
 import Data.Coerce (coerce)
 import Data.Maybe (fromJust)
+import Data.Tuple.Extra (thd3)
 import Language.LSP.Client
 import Language.LSP.Client.Decoding (getNextMessage)
 import Language.LSP.Client.Encoding (encode)
@@ -93,8 +94,9 @@ reqServer = do
     threadId <- forkIO $ forever $ do
         bytes <- liftIO $ getNextMessage inRead
         let obj = fromJust $ Aeson.decode bytes
-        let idMaybe = parseMaybe (.: "id") obj
-        let message = ResponseMessage "2.0" idMaybe (Right Empty) :: ResponseMessage 'Shutdown
+            idMaybe = parseMaybe (.: "id") obj
+            message :: ResponseMessage 'Shutdown
+            message = ResponseMessage "2.0" idMaybe (Right Empty)
         forkIO $ do
             threadDelay 1_000
             takeMVar lock
@@ -132,7 +134,7 @@ spec = do
     prop "concurrently handles actions and server messages" $ again $ do
         bracket
             diagServer
-            (\(_, _, threadId) -> killThread threadId)
+            (killThread . thd3)
             $ \(serverIn, serverOut, _) -> runSessionWithHandles serverOut serverIn $ do
                 diagnostics <- newTVarIO @_ @[Diagnostic] []
                 let getDiagnostics = readTVarIO diagnostics
@@ -152,7 +154,7 @@ spec = do
     prop "answers requests correctly" $ again $ do
         bracket
             reqServer
-            (\(_, _, threadId) -> killThread threadId)
+            (killThread . thd3)
             $ \(serverIn, serverOut, _) -> runSessionWithHandles serverOut serverIn $ do
                 req1Done <- newEmptyMVar
                 req1Id <- sendRequest SShutdown Empty (putMVar req1Done . (._id))
@@ -163,7 +165,7 @@ spec = do
     prop "opens and changes virtual documents correctly" $ do
         bracket
             notifServer
-            (\(_, _, threadId) -> killThread threadId)
+            (killThread . thd3)
             $ \(serverIn, serverOut, _) -> runSessionWithHandles serverOut serverIn $ do
                 doc <- LSP.createDoc "TestFile.hs" "haskell" ""
                 LSP.documentContents doc `shouldReturn` Just ""
