@@ -72,7 +72,6 @@ data SessionState = SessionState
     , vfs :: TVar VFS
     -- ^ Virtual, in-memory file system of the files known to the LSP
     , rootDir :: FilePath
-    , shouldStop :: TVar Bool
     }
 
 defaultSessionState :: VFS -> IO SessionState
@@ -85,7 +84,6 @@ defaultSessionState vfs' = do
     progressTokens <- newTVarIO mempty
     outgoing <- newTQueueIO
     vfs <- newTVarIO vfs'
-    shouldStop <- newTVarIO False
     pure
         SessionState
             { rootDir = "."
@@ -327,11 +325,6 @@ initialize = do
                 }
     asks initialized >>= liftIO . atomically . flip putTMVar (getResponseResult response)
     sendNotification SInitialized $ Just InitializedParams
-
-shutdown :: Session ()
-shutdown = do
-    shouldStop <- asks shouldStop
-    liftIO $ writeTVarIO shouldStop True
 
 {- | /Creates/ a new text document. This is different from 'openDoc'
  as it sends a workspace/didChangeWatchedFiles notification letting the server

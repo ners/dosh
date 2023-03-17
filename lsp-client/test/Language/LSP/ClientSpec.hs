@@ -13,7 +13,6 @@ import Data.ByteString.Builder.Extra (defaultChunkSize)
 import Data.ByteString.Lazy qualified as LazyByteString
 import Data.Coerce (coerce)
 import Data.Maybe (fromJust)
-import Development.IDE
 import Language.LSP.Client
 import Language.LSP.Client.Decoding (getNextMessage)
 import Language.LSP.Client.Encoding (encode)

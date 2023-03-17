@@ -2,12 +2,12 @@ module Language.LSP.Client where
 
 import Control.Concurrent.Async.Lifted (concurrently_, race)
 import Control.Concurrent.STM
-import Control.Exception (SomeException)
 import Control.Monad (forever)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (asks, runReaderT)
 import Data.ByteString.Lazy qualified as LazyByteString
 import Data.Dependent.Map qualified as DMap
+import Data.Either (fromLeft)
 import Data.Generics.Labels ()
 import Language.LSP.Client.Decoding
 import Language.LSP.Client.Encoding (encode)
@@ -16,7 +16,6 @@ import Language.LSP.Types (From, Method, MethodType, SMethod (..))
 import Language.LSP.Types qualified as LSP
 import Language.LSP.VFS (initVFS)
 import System.IO (Handle, stdin, stdout)
-import UnliftIO.Exception (catch)
 import Prelude
 
 runSession :: Session () -> IO ()
@@ -92,18 +91,15 @@ methodType STextDocumentPublishDiagnostics = Notification
 methodType SCancelRequest = Notification
 methodType (SCustomMethod _) = undefined
 
-runSessionWithHandles :: Handle -> Handle -> Session () -> IO ()
+runSessionWithHandles :: Handle -> Handle -> Session a -> IO a
 runSessionWithHandles input output action = initVFS $ \vfs -> do
     initialState <- defaultSessionState vfs
     flip runReaderT initialState $ do
-        let stop :: Session () = do
-                shouldStop <- asks shouldStop
-                liftIO $ atomically $ readTVar shouldStop >>= check
-        actionResult <- race (race stop (catch @_ @SomeException action $ error . show)) $ do
-            let send = flip (catch @_ @SomeException) (error . show) $ do
+        actionResult <- race action $ do
+            let send = do
                     message <- asks outgoing >>= liftIO . atomically . readTQueue
                     liftIO $ LazyByteString.hPut output $ encode message
-            let receive = flip (catch @_ @SomeException) (error . show) $ do
+            let receive = do
                     serverBytes <- liftIO $ getNextMessage input
                     (serverMessage, requestCallback) <-
                         asks pendingRequests
@@ -119,11 +115,4 @@ runSessionWithHandles input output action = initVFS $ \vfs -> do
                             _ -> pure ()
                         _ -> pure ()
             concurrently_ (forever send) (forever receive)
-        case actionResult of
-            Right _ -> error "send/receive thread should not exit!"
-            Left (Left ()) ->
-                -- Ended because `shutdown` was called
-                pure ()
-            Left (Right ()) ->
-                -- Ended because action is over
-                pure ()
+        pure $ fromLeft (error "send/receive thread should not exit!") actionResult

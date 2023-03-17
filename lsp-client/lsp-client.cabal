@@ -65,7 +65,6 @@ library
         mtl,
         stm,
         text,
-        unliftio,
         unordered-containers,
     if os(windows)
         build-depends: Win32
@@ -88,7 +87,6 @@ test-suite spec
     build-depends:
         QuickCheck,
         extra,
-        ghcide,
         hspec,
         lsp-client,
         process,
