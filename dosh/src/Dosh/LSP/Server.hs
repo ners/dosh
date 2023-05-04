@@ -69,16 +69,16 @@ server = do
             hPut outWrite c
         forkIO $ ghcide recorder inRead' outWrite'
         pure (inWrite, outRead)
-    sessionActions <- newChan
+    sessionActions <- newTQueueIO
     liftIO $
         forkIO $
             LSP.runSessionWithHandles serverOutput serverInput $
                 forever $ do
-                    action <- readChan sessionActions
+                    action <- atomically $ readTQueue sessionActions
                     action `catch` (liftIO . reportError)
     pure
         Server
-            { input = writeChan sessionActions
+            { input = atomically . writeTQueue sessionActions
             , error
             , log
             }
@@ -120,10 +120,11 @@ directCradle wdir args =
                 , runCradle = \_ _ ->
                     return (CradleSuccess (ComponentOptions (args ++ argDynamic) wdir []))
                 , runGhcCmd =
-                    pure . \case
-                        ["--print-libdir"] -> CradleSuccess GHC.libdir
-                        ["--numeric-version"] -> CradleSuccess GHC.cProjectVersion
-                        _ -> CradleNone
+                    const $
+                        pure . \case
+                            ["--print-libdir"] -> CradleSuccess GHC.libdir
+                            ["--numeric-version"] -> CradleSuccess GHC.cProjectVersion
+                            _ -> CradleNone
                 }
         }
   where

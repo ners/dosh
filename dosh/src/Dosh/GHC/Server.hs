@@ -6,7 +6,7 @@ import Control.Monad.Catch (MonadMask, bracket, catch)
 import Dosh.GHC.Session qualified as GHC
 import Dosh.Prelude hiding (bracket, catch)
 import Dosh.Util
-import GHC (Ghc, runGhc)
+import GHC (Ghc, runGhc, DynFlags, getSessionDynFlags)
 import GHC.IO.Handle (hDuplicate, hDuplicateTo)
 import GHC.Paths qualified as GHC
 import Reflex
@@ -35,8 +35,6 @@ server = do
 
 asyncServer :: (SomeException -> IO ()) -> IO (Ghc () -> IO (), Handle, Handle)
 asyncServer reportError = do
-    i <- newEmptyMVar
-    o <- newEmptyMVar
     -- TODO: try to use Knob rather than pipes
     (outRead, outWrite) <- createPipe
     hSetBuffering outRead NoBuffering
@@ -44,14 +42,14 @@ asyncServer reportError = do
     (errRead, errWrite) <- createPipe
     hSetBuffering errRead NoBuffering
     hSetBuffering errWrite NoBuffering
+    sessionActions <- newTQueueIO
     void $ forkIO $ runGhc (Just GHC.libdir) $ do
         GHC.initialiseSession
         forever $ do
-            action <- liftIO $ takeMVar i
+            action <- atomically $ readTQueue sessionActions
             hCapture [(stdout, outWrite), (stderr, errWrite)] action
                 `catch` (liftIO . reportError)
-            liftIO $ putMVar o ()
-    let input = putMVar i >>> (*> takeMVar o)
+    let input = atomically . writeTQueue sessionActions
     pure (input, outRead, errRead)
 
 testServer :: Ghc () -> IO (ByteString, ByteString, [SomeException])
@@ -68,6 +66,12 @@ withGhc :: Ghc a -> IO (Either SomeException a)
 withGhc action = try $ runGhc (Just GHC.libdir) $ do
     GHC.initialiseSession
     action
+
+getSessionDynFlags :: Server t -> IO GHC.DynFlags
+getSessionDynFlags s = do
+    flags <- newEmptyMVar
+    s.input $ GHC.getSessionDynFlags >>= putMVar flags
+    takeMVar flags
 
 hCapture :: forall m a. (MonadIO m, MonadMask m) => [(Handle, Handle)] -> m a -> m a
 hCapture handleMap action = go handleMap

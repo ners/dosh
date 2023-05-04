@@ -4,16 +4,20 @@
 module Dosh.Util where
 
 import Control.Monad.Extra (whenMaybeM, whileJustM)
+import Control.Monad.Fix (MonadFix)
 import Data.ByteString (hGetSome)
 import Data.ByteString.Builder.Extra (defaultChunkSize)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
+import Data.UUID (UUID)
+import Data.UUID qualified as UUID
+import Data.UUID.V4 qualified as UUID
 import Development.IDE (Priority, WithPriority (..))
 import Dosh.Prelude
 import Graphics.Vty (Key (..), Modifier (..))
-import Language.LSP.Types (Diagnostic)
+import Language.LSP.Types (Diagnostic, Uri (..), filePathToUri)
 import Language.LSP.Types.Lens (HasLine (line), character, range, start)
 import Reflex
 import Reflex.Vty
@@ -82,7 +86,7 @@ attach2 (b1, b2) e = attach b1 (attach b2 e) <&> \(a, (b, c)) -> (a, b, c)
 attach3 :: Reflex t => (Behavior t a, Behavior t b, Behavior t c) -> Event t d -> Event t (a, b, c, d)
 attach3 (b1, b2, b3) e = attach b1 (attach2 (b2, b3) e) <&> \(a, (b, c, d)) -> (a, b, c, d)
 
-blankLine :: forall t m. (HasLayout t m, HasInput t m, HasImageWriter t m, HasDisplayRegion t m, HasFocusReader t m) => m ()
+blankLine :: forall t m. (HasLayout t m, HasInput t m, HasImageWriter t m, HasDisplayRegion t m, HasFocusReader t m, MonadHold t m, MonadFix m) => m ()
 blankLine = grout (fixed $ pure 1) blank
 
 toMaybe :: Bool -> a -> Maybe a
@@ -127,3 +131,9 @@ withLineNumbers t = Text.intercalate "\n" $ zipWith (\i t -> Text.justifyRight w
   where
     ls = Text.splitOn "\n" t
     w = Text.length $ tshow $ length ls
+
+uuidToUri :: FilePath -> FilePath -> UUID -> Uri
+uuidToUri prefix postfix = filePathToUri . Text.unpack . (Text.pack prefix <>) . (<> Text.pack postfix) . UUID.toText
+
+newRandomUri :: MonadIO m => FilePath -> FilePath -> m Uri
+newRandomUri prefix postfix = uuidToUri prefix postfix <$> liftIO UUID.nextRandom

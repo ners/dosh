@@ -70,6 +70,9 @@ currentLine :: Eq t => CodeZipper t -> SourceLine t
 currentLine CodeZipper{tokensBefore, tokensAfter} =
     normaliseToks $ reverse tokensBefore <> tokensAfter
 
+linesBetween :: Eq t => Int -> Int -> CodeZipper t -> [SourceLine t]
+linesBetween from to = take (to - from) . fmap currentLine . iterate down . home . goToRow from
+
 null :: CodeZipper t -> Bool
 null CodeZipper{..} = no linesBefore && no linesAfter && no tokensBefore && no tokensAfter
   where
@@ -112,6 +115,9 @@ textAfter CodeZipper{linesAfter, tokensAfter} =
 
 toText :: CodeZipper t -> Text
 toText cz = textBefore cz <> textAfter cz
+
+textBetween :: Eq t => Int -> Int -> CodeZipper t -> Text
+textBetween = (((Text.unlines . fmap lineToText) .) .) . linesBetween
 
 lineToText :: SourceLine t -> Text
 lineToText line = mconcat $ tokenContent <$> line
@@ -244,6 +250,15 @@ upN n cz@CodeZipper{tokensBefore}
     | otherwise =
         (iterate up' cz !! n)
             & rightN (lineWidth tokensBefore)
+
+-- | Move to the specifid row and try to preserve the current column.
+goToRow :: Eq t => Int -> CodeZipper t -> CodeZipper t
+goToRow r cz
+    | dr < 0 = downN (abs dr) cz
+    | dr > 0 = upN dr cz
+    | otherwise = cz
+  where
+    dr = row cz - r
 
 -- | Go down to the next line and try to preserve the current column.
 down :: Eq t => CodeZipper t -> CodeZipper t

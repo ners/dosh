@@ -71,6 +71,14 @@ first SeqZipper{..} = seqFirst before
 current :: SeqZipper t -> Maybe t
 current SeqZipper{..} = seqFirst after
 
+next :: SeqZipper t -> Maybe t
+next = current . forward
+
+previous :: SeqZipper t -> Maybe t
+previous SeqZipper{before} = case Seq.viewr before of
+    EmptyR -> Nothing
+    (_ :> x) -> Just x
+
 last :: SeqZipper t -> Maybe t
 last SeqZipper{..} = seqLast after <|> seqLast before
 
@@ -88,7 +96,7 @@ back sz@SeqZipper{..} = case Seq.viewr before of
     (before :> x) -> sz{before, after = x <| after}
 
 backWhile :: (t -> Bool) -> SeqZipper t -> SeqZipper t
-backWhile p sz = go $ take (1 + Seq.length (before sz)) $ iterate back sz
+backWhile p sz = go $ Prelude.take (1 + Seq.length (before sz)) $ iterate back sz
   where
     go [x] = x
     go (x : y : xs)
@@ -101,3 +109,35 @@ home sz@SeqZipper{..} = sz{before = mempty, after = before <> after}
 
 end :: SeqZipper t -> SeqZipper t
 end sz@SeqZipper{..} = sz{before = before <> after, after = mempty}
+
+drop :: Int -> SeqZipper t -> SeqZipper t
+drop n sz@SeqZipper{..} = sz{after = Seq.drop n after}
+
+dropBefore :: Int -> SeqZipper t -> SeqZipper t
+dropBefore n sz@SeqZipper{..} = Data.Sequence.Zipper.drop n' $ iterate back sz !! n'
+  where
+    n' = min n $ Seq.length before
+
+take :: Int -> SeqZipper t -> Seq t
+take n SeqZipper{..} = Seq.take n after
+
+takeBefore :: Int -> SeqZipper t -> Seq t
+takeBefore n sz@SeqZipper{..} = Data.Sequence.Zipper.take n' $ iterate back sz !! n'
+  where
+    n' = min n $ Seq.length before
+
+-- | Insert a new element before the current element (after the cursor) and move the focus to the newly inserted one.
+insert :: t -> SeqZipper t -> SeqZipper t
+insert v sz@SeqZipper{..} = sz{after = v <| after}
+
+{- | Insert a new element after the current element, keeping the focus on the current element.
+ In absence of a current element (at the end of a sequence), the inserted element becomes the current element.
+-}
+insertAfter :: t -> SeqZipper t -> SeqZipper t
+insertAfter v sz@SeqZipper{..}
+    | Seq.null after = insert v sz
+    | otherwise = back $ insert v $ forward sz
+
+-- | Insert a new element before the current element and keep the focus unchanged.
+insertBefore :: t -> SeqZipper t -> SeqZipper t
+insertBefore v sz@SeqZipper{..} = sz{before = before |> v}

@@ -9,79 +9,71 @@ import Control.Monad.Fix
 import Data.Default
 import Data.HashMap.Strict (HashMap)
 import Data.List.NonEmpty qualified as NonEmpty
-import Data.Sequence (Seq)
 import Data.Sequence qualified as Seq
 import Data.Sequence.Zipper (SeqZipper (..))
 import Data.Sequence.Zipper qualified as SZ
 import Data.Text.CodeZipper qualified as CZ
+import Data.Text.Utf16.Rope (Rope)
 import Data.These (These (..))
 import Data.Traversable (for)
 import Data.UUID (UUID)
-import Data.UUID qualified as UUID
-import Data.UUID.V4 qualified as UUID
 import Dosh.Cell
 import Dosh.Cell qualified as Cell
 import Dosh.GHC.Client qualified as GHC
 import Dosh.LSP.Client qualified as LSP
-import Dosh.LSP.Document (ChunkMetadata, ChunkType (..), Document, newDocument)
-import Dosh.LSP.Document qualified as LSP.Document
 import Dosh.Prelude
 import Dosh.Util
+import Language.LSP.Types (TextDocumentIdentifier (..), Uri (..))
 import Language.LSP.Types qualified as LSP hiding (line)
 import Language.LSP.Types.Lens qualified as LSP
 import Reflex hiding (Query, Response)
 import Reflex.Vty hiding (Query, Response)
 
 data Notebook = Notebook
-    { uid :: UUID
+    { identifier :: TextDocumentIdentifier
     , cells :: HashMap UUID Cell
     , cellOrder :: SeqZipper UUID
     , nextCellNumber :: Int
     , disabled :: Bool
-    , document :: Document
+    , language :: Text
+    , contents :: Rope
     }
     deriving stock (Generic, Show)
 
-newNotebook :: MonadIO m => Text -> Text -> m Notebook
-newNotebook language ext = do
-    uid <- liftIO UUID.nextRandom
-    let uri = LSP.Uri $ "file://" <> UUID.toText uid <> "." <> ext
-    Notebook
-        { uid
-        , cells = mempty
-        , cellOrder = mempty
-        , nextCellNumber = 1
-        , disabled = False
-        , document = newDocument uri & #language .~ language
-        }
+instance Default Notebook where
+    def =
+        Notebook
+            { identifier = TextDocumentIdentifier $ Uri mempty
+            , cells = mempty
+            , cellOrder = mempty
+            , nextCellNumber = 1
+            , disabled = False
+            , language = mempty
+            , contents = mempty
+            }
+
+newNotebook :: MonadIO m => (Notebook -> Notebook) -> m Notebook
+newNotebook f = do
+    uri <- newRandomUri "/" ".hs"
+    def
+        & #identifier .~ TextDocumentIdentifier uri
+        & f
         & createCell (#disabled .~ False)
 
 -- | Create a new cell with a random UUID.
 createCell :: MonadIO m => (Cell -> Cell) -> Notebook -> m Notebook
-createCell f n = (n &) . createCell' . const . f <$> newCell n.nextCellNumber
+createCell f n = flip addCell n <$> newCell f
 
-{- | Create a new cell with an empty UUID.
- You almost certainly want to call this with a transformation that sets the UUID.
--}
-createCell' :: (Cell -> Cell) -> Notebook -> Notebook
-createCell' f n =
+-- | Add a cell to the notebook.
+addCell :: Cell -> Notebook -> Notebook
+addCell c n =
     n
-        & #cells . at c.uid ?~ c
-        & #cellOrder %~ (<> SZ.singleton c.uid)
-        & #document . #chunks %~ (<> SZ.singleton chunk)
-  where
-    c =
-        f def
-            & #number .~ n.nextCellNumber
-            & #input . #language .~ n.document.language
-    chunk =
-        LSP.Document.ChunkMetadata
-            { cellId = c.uid
-            , chunkIndex = 0
-            , chunkType = Expression
-            , firstLine = firstLine c
-            , lastLine = lastLine c
-            }
+        & #cells . at c.uid
+            ?~ ( c
+                    & #number .~ n.nextCellNumber
+                    & #input . #language .~ n.language
+               )
+        & #cellOrder %~ SZ.insertAfter c.uid
 
 currentCellUid :: Notebook -> Maybe UUID
 currentCellUid n = SZ.current n.cellOrder
@@ -139,18 +131,13 @@ handleCellEvent
     -> CellEvent
     -> Notebook
     -> m Notebook
-handleCellEvent _ _ Cell{uid, firstLine, input} (UpdateCellCursor (moveCursor -> update)) n = do
-    let newZipper = update input
-        newRow = firstLine + CZ.row newZipper
-    pure $
-        n
-            & #cells . ix uid . #input .~ newZipper
-            & #document %~ LSP.Document.goToLine newRow
+handleCellEvent _ _ Cell{uid} (UpdateCellCursor (moveCursor -> update)) n = do
+    pure $ n & #cells . ix uid . #input %~ update
 handleCellEvent _ lsp c@Cell{uid, input} (UpdateCellInput update) n = do
     liftIO $
         lsp.request
             LSP.ChangeDocument
-                { uri = n.document.uri
+                { identifier = n.identifier
                 , range =
                     Just
                         LSP.Range
@@ -176,10 +163,7 @@ handleCellEvent _ lsp c@Cell{uid, input} (UpdateCellInput update) n = do
     pure $
         n
             & #cells . ix uid . #input .~ newZipper
-            & filtered (const $ row /= newRow)
-                %~ ( updateLineNumbers
-                        >>> #document . #chunks . #after %~ updateChunkLines
-                   )
+            & filtered (const $ row /= newRow) %~ updateLineNumbers
   where
     row = firstLine c + CZ.row input
     col = CZ.col input
@@ -194,35 +178,31 @@ handleCellEvent _ lsp c@Cell{uid, input} (UpdateCellInput update) n = do
         \n (c1, c2) ->
             n
                 & #cells . ix c2 %~ #firstLine .~ lastLine (fromJust $ n ^. #cells . at c1) + 1
-    updateChunkLines :: Seq ChunkMetadata -> Seq ChunkMetadata
-    updateChunkLines =
-        overHead (#firstLine %~ min newRow >>> #lastLine %~ (+ (newRow - row)))
-            >>> overTail (#firstLine %~ (+ (newRow - row)) >>> (#lastLine %~ (+ (newRow - row))))
-    overHead :: forall a. (a -> a) -> Seq a -> Seq a
-    overHead = flip Seq.adjust 0
-    overTail :: forall a. (a -> a) -> Seq a -> Seq a
-    overTail = (dropping 1 traverse %~)
 handleCellEvent ghc lsp c@Cell{uid, input} EvaluateCell n = do
     -- we send a new-line to LSP so it will be aware of the next cell
-    when (shouldCreateNewCell n) $ liftIO $
-        lsp.request
-            LSP.ChangeDocument
-                { uri = n.document.uri
-                , range =
-                    Just
-                        LSP.Range
-                            { _start = LSP.Position{_line = fromIntegral $ lastLine c + 1, _character = 0}
-                            , _end = LSP.Position{_line = fromIntegral $ lastLine c + 1, _character = 0}
-                            }
-                , contents = "\n\n"
-                }
+    when (shouldCreateNewCell n) $
+        liftIO $
+            lsp.request
+                LSP.ChangeDocument
+                    { identifier = n.identifier
+                    , range =
+                        Just
+                            LSP.Range
+                                { _start = LSP.Position{_line = fromIntegral $ lastLine c, _character = maxBound}
+                                , _end = LSP.Position{_line = fromIntegral $ lastLine c, _character = maxBound}
+                                }
+                    , contents = "\n\n"
+                    }
     let content = CZ.toText input
     liftIO $ ghc.request GHC.Evaluate{uid, content}
-    newCellUid <- liftIO UUID.nextRandom
+    maybeNewCell <-
+        if shouldCreateNewCell n
+            then Just <$> newCell (#firstLine .~ lastLine c + 1)
+            else pure Nothing
     pure $
         n
             & updateNumbers
-            & filtered shouldCreateNewCell %~ createNewCell newCellUid
+            & maybe id addCell maybeNewCell
             & #cells . ix uid %~ \c ->
                 c
                     { output = Nothing
@@ -239,8 +219,6 @@ handleCellEvent ghc lsp c@Cell{uid, input} EvaluateCell n = do
     isLastCell = (Just uid ==) . SZ.last . cellOrder
     shouldCreateNewCell :: Notebook -> Bool
     shouldCreateNewCell n = isLastCell n && cellNotEvaluated n
-    createNewCell :: UUID -> Notebook -> Notebook
-    createNewCell uid = createCell' $ #uid .~ uid >>> #firstLine .~ lastLine c + 1
     updateNumbers :: Notebook -> Notebook
     updateNumbers n =
         n
@@ -254,7 +232,6 @@ handleCellEvent _ _ _ GoToPreviousCell n
                 & overCurrentCell (#disabled .~ True)
                 & #cellOrder %~ SZ.back
                 & overCurrentCell (#disabled .~ False)
-                & #document . #chunks %~ SZ.back
     | otherwise = pure n
   where
     havePrev = not . null . SZ.before . cellOrder
@@ -265,7 +242,6 @@ handleCellEvent _ _ _ GoToNextCell n
                 & overCurrentCell (#disabled .~ True)
                 & #cellOrder %~ SZ.forward
                 & overCurrentCell (#disabled .~ False)
-                & #document . #chunks %~ SZ.forward
     | otherwise = pure n
   where
     haveNext = isJust . SZ.current . SZ.forward . cellOrder
@@ -291,7 +267,7 @@ handleLspResponse
     => LSP.Response
     -> Notebook
     -> m Notebook
-handleLspResponse LSP.DocumentContents{..} = #document . #contents .~ contents >>> pure
+handleLspResponse LSP.DocumentContents{..} = #contents .~ contents >>> pure
 handleLspResponse LSP.Diagnostics{..} = clearDiagnostics >>> setDiagnostics >>> pure
   where
     clearDiagnostics :: Notebook -> Notebook

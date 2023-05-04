@@ -27,6 +27,7 @@ import Data.Maybe (fromJust, fromMaybe, mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.IO qualified as Text
+import Data.Text.Utf16.Rope (Rope)
 import GHC.Generics (Generic)
 import Language.LSP.Client.Compat (getCurrentProcessID, lspClientInfo)
 import Language.LSP.Client.Decoding
@@ -45,7 +46,6 @@ import Language.LSP.VFS
     , lsp_version
     , openVFS
     , vfsMap
-    , virtualFileText
     , virtualFileVersion
     )
 import System.Directory (canonicalizePath)
@@ -366,11 +366,11 @@ createDoc file language contents = do
         clientCapsSupports =
             clientCaps
                 ^? workspace
-                . _Just
-                . didChangeWatchedFiles
-                . _Just
-                . dynamicRegistration
-                . _Just
+                    . _Just
+                    . didChangeWatchedFiles
+                    . _Just
+                    . dynamicRegistration
+                    . _Just
                 == Just True
         shouldSend = clientCapsSupports && foldl' (\acc r -> acc || regHits r) False regs
 
@@ -422,24 +422,15 @@ getDocUri file = do
     let fp = rootDir </> file
     return $ filePathToUri fp
 
--- | Returns the symbols in a document.
-getDocumentSymbols :: TextDocumentIdentifier -> Session (Either [DocumentSymbol] [SymbolInformation])
-getDocumentSymbols doc = do
-    ResponseMessage _ rspLid res <- request STextDocumentDocumentSymbol (DocumentSymbolParams Nothing Nothing doc)
-    case res of
-        Right (InL (List xs)) -> pure $ Left xs
-        Right (InR (List xs)) -> pure $ Right xs
-        Left err -> throw (UnexpectedResponseError (SomeLspId $ fromJust rspLid) err)
-
 -- | The current text contents of a document.
-documentContents :: TextDocumentIdentifier -> Session (Maybe Text)
-documentContents doc = do
+documentContents :: TextDocumentIdentifier -> Session (Maybe Rope)
+documentContents (TextDocumentIdentifier uri) = do
     vfs <- asks vfs >>= liftIO . readTVarIO
-    pure $ virtualFileText <$> vfs ^. vfsMap . at (toNormalizedUri (doc ^. uri))
+    pure $ vfs ^? vfsMap . ix (toNormalizedUri uri) . to _file_text
 
 -- | Adds the current version to the document, as tracked by the session.
 getVersionedDoc :: TextDocumentIdentifier -> Session VersionedTextDocumentIdentifier
 getVersionedDoc (TextDocumentIdentifier uri) = do
     vfs <- asks vfs >>= liftIO . readTVarIO
     let ver = vfs ^? vfsMap . ix (toNormalizedUri uri) . to virtualFileVersion
-    return (VersionedTextDocumentIdentifier uri ver)
+    pure $ VersionedTextDocumentIdentifier uri ver

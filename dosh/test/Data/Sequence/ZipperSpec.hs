@@ -76,7 +76,7 @@ itMoves :: (Integral t, Show t) => Move -> SeqZipper t -> Expectation
 itMoves m zipper = do
     newPosition `shouldBe` expectedNewPosition
     case m of
-        Forward -> current newZipper `shouldBe` listToMaybe (drop 1 forwardList)
+        Forward -> current newZipper `shouldBe` listToMaybe (Prelude.drop 1 forwardList)
         Back -> current newZipper `shouldBe` listToMaybe backwardList <|> current zipper
         Home -> current newZipper `shouldBe` listToMaybe (toList zipper)
         End -> current newZipper `shouldBe` Nothing

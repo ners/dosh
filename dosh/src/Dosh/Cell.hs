@@ -43,10 +43,8 @@ data Cell = Cell
     }
     deriving stock (Generic, Eq, Show)
 
-newCell :: MonadIO m => Int -> m Cell
-newCell number = do
-    uid <- liftIO UUID.nextRandom
-    pure $ def{uid, number}
+newCell :: MonadIO m => (Cell -> Cell) -> m Cell
+newCell f = liftIO UUID.nextRandom <&> \uid -> f def{uid}
 
 instance Default Cell where
     def =

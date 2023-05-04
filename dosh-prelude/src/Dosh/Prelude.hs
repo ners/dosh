@@ -21,6 +21,7 @@ module Dosh.Prelude
     , module UnliftIO.Async
     , module UnliftIO.Concurrent
     , module UnliftIO.Exception
+    , module UnliftIO.STM
     , module UnliftIO.Timeout
     )
 where
@@ -46,4 +47,5 @@ import System.IO
 import UnliftIO.Async
 import UnliftIO.Concurrent
 import UnliftIO.Exception
+import UnliftIO.STM
 import UnliftIO.Timeout

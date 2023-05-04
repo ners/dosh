@@ -13,8 +13,6 @@ build-type:         Simple
 common common
     default-language: GHC2021
     ghc-options:
-        -O0
-        -j
         -Weverything
         -Wno-unsafe
         -Wno-missing-safe-haskell-mode
@@ -40,7 +38,8 @@ common common
         TypeFamilies
         ViewPatterns
     build-depends:
-        dosh-prelude
+        dosh-prelude,
+        text
 
 library
     import:           common
@@ -74,6 +73,7 @@ library
         ghc-paths,
         ghc-syntax-highlighter,
         ghcide,
+        hashable,
         haskell-language-server,
         hie-bios,
         lens,
@@ -85,8 +85,9 @@ library
         reflex-vty,
         skylighting,
         skylighting-core,
+        stm,
         template-haskell,
-        text,
+        text-rope,
         these,
         unordered-containers,
         uuid,
@@ -98,16 +99,10 @@ executable dosh
     hs-source-dirs:   app
     ghc-options:
         -threaded
-        -prof
-        -rtsopts
-        -with-rtsopts=-N
-        -with-rtsopts=-T
-        ---with-rtsopts=-xc
     build-depends:
         dosh,
         reflex,
-        reflex-vty,
-        text
+        reflex-vty
 
 test-suite dosh-test
     import:           common
@@ -124,7 +119,6 @@ test-suite dosh-test
         ghcide,
         hspec,
         quickcheck-text,
-        text
     other-modules:
         Data.Sequence.ZipperSpec,
         Data.Text.CodeZipperSpec,

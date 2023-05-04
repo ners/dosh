@@ -9,6 +9,8 @@ module Dosh.GHC.Lexer
     , splitExpressions
     , chunkLines
     , chunkUnlines
+    , firstLine
+    , lastLine
     )
 where
 
@@ -84,15 +86,20 @@ splitExpressions chunk = reverse $ foldl' appendLine [] $ chunkLines chunk
         | otherwise = line : e : es
 
 chunkLines :: Chunk -> [Chunk]
-chunkLines (L loc t)
+chunkLines c@(L loc t)
     | null ts = [L loc ""]
     | otherwise = uncurry line <$> zip [0 ..] ts
   where
     file = srcSpanFile loc
-    firstLine = srcLocLine $ realSrcSpanStart loc
-    line i = chunkFromText file (firstLine + i)
+    line i = chunkFromText file (firstLine c + i)
     ts = Text.splitOn "\n" t
 
 chunkUnlines :: [Chunk] -> Chunk
 chunkUnlines ts@((realSrcSpanStart . getLoc -> start) : _) = chunkFromText (srcLocFile start) (srcLocLine start) $ Text.intercalate "\n" $ unLoc <$> ts
 chunkUnlines [] = error "locatedUnlines: cannot locate empty list"
+
+firstLine :: GenLocated RealSrcSpan e -> Int
+firstLine = srcLocLine . realSrcSpanStart . getLoc
+
+lastLine :: GenLocated RealSrcSpan e -> Int
+lastLine = srcLocLine . realSrcSpanEnd . getLoc
