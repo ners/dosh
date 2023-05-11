@@ -133,8 +133,8 @@ cell c = do
                             let c = diagnosticChar d
                                 deltaC = c - padWidth
                                 BoxStyle{..} = roundedBoxStyle
-                                newPads = [Span V.currentAttr spaces | let spaces = Text.replicate deltaC " ", deltaC > 0]
-                                newPipe = [Span (diagAttr d) (Text.singleton _boxStyle_e) | deltaC > 0]
+                                newPads = [Span V.currentAttr spaces | let spaces = Text.replicate deltaC " ", not (Text.null spaces)]
+                                newPipe = [Span (diagAttr d) (Text.singleton _boxStyle_e) | deltaC > 0 || padWidth == 0]
                                 newLines =
                                     Text.lines (prependAndPadLines (Text.pack [_boxStyle_sw, _boxStyle_s, ' ']) $ d ^. message) <&> \l ->
                                         (diagnosticLine d, pads <> newPads <> [Span (diagAttr d) l])

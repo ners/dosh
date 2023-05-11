@@ -6,7 +6,7 @@ import Control.Monad.Catch (MonadMask, bracket, catch)
 import Dosh.GHC.Session qualified as GHC
 import Dosh.Prelude hiding (bracket, catch)
 import Dosh.Util
-import GHC (Ghc, runGhc, DynFlags, getSessionDynFlags)
+import GHC (DynFlags, Ghc, getSessionDynFlags, runGhc)
 import GHC.IO.Handle (hDuplicate, hDuplicateTo)
 import GHC.Paths qualified as GHC
 import Reflex

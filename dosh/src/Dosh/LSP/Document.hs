@@ -23,7 +23,7 @@ import Dosh.Util (tshow, withLineNumbers)
 import GHC.Driver.Session qualified as GHC
 import GHC.Exts (IsList (..))
 import Language.LSP.Client.Session (Session, changeDoc, documentContents)
-import Language.LSP.Types (TextDocumentContentChangeEvent (..), TextDocumentIdentifier (..), UInt, Diagnostic)
+import Language.LSP.Types (Diagnostic, TextDocumentContentChangeEvent (..), TextDocumentIdentifier (..), UInt)
 import Language.LSP.Types qualified as LSP
 import Language.LSP.Types.Lens (HasCharacter (character), end, line, range, start)
 
@@ -132,9 +132,9 @@ handleUpdates events = do
 -- Moves diagnostics left on virtually prefixed lines.
 normaliseDiagnostics :: Document -> [Diagnostic] -> [Diagnostic]
 normaliseDiagnostics doc = fmap $ range %~ mangle start . mangle end
-    where
-        isExprLine = flip HashSet.member doc.expressionLines . view line
-        mangle l = l . filtered isExprLine . character . filtered (>= fromIntegral prefixLength) %~ (+- (-prefixLength))
+  where
+    isExprLine = flip HashSet.member doc.expressionLines . view line
+    mangle l = l . filtered isExprLine . character . filtered (>= fromIntegral prefixLength) %~ (+- (-prefixLength))
 
 exprPrefix :: UUID -> Text
 exprPrefix u = "_" <> Text.replace "-" "_" (UUID.toText u) <> " = "
@@ -155,7 +155,8 @@ prefixLine n = whenM (gets $ not . HashSet.member n . expressionLines) $ do
                 , _character = 0
                 }
     modify $ #expressionLines %~ HashSet.insert n
-    lift $ changeDoc
+    lift $
+        changeDoc
             identifier
             [ TextDocumentContentChangeEvent
                 { _range =
