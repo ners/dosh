@@ -24,9 +24,6 @@ main = mainWidget $ do
     liftIO $ do
         lspClient.request LSP.Initialize
         lspClient.request $ LSP.CreateDocument document
-        forkIO $ forever $ do
-            threadDelay 100_000
-            lspClient.request $ LSP.GetDocumentContents identifier
     performEvent $ lspClient.onLog <&> \l -> liftIO $ Text.appendFile "hls-log.log" $ tshow l <> "\n"
     performEvent $ lspClient.onError <&> \e -> liftIO $ Text.appendFile "hls-error.log" $ tshow e <> "\n"
     initManager_ $ mdo

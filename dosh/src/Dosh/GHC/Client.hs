@@ -52,7 +52,7 @@ client ghc = do
                 let log = forever $ liftIO $ do
                         content <- hGetSome ghc.output defaultChunkSize
                         respond PartialResponse{..}
-                raceWithDelay_ 1000 exec log `catch` \error -> liftIO (respond Error{..})
+                race_ exec log `catch` \error -> liftIO (respond Error{..})
                 liftIO $ respond EndResponse{..}
     pure Client{..}
 
