@@ -9,11 +9,16 @@ import Dosh.GHC.Lexer
 import Dosh.GHC.LexerSpec
 import Dosh.GHC.Parser
 import Dosh.GHC.Server (withGhc)
-import Dosh.LSP.Document (ChunkType (..))
 import Dosh.Prelude hiding (elements)
 import Dosh.Util
 import Test.Hspec
 import Test.QuickCheck
+
+data ChunkType
+    = Module
+    | Expression
+    | Declaration    
+    deriving stock (Generic, Eq, Show)
 
 data Source
     = PragmaSource Text Text

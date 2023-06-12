@@ -45,15 +45,19 @@ client ghc = do
     (onResponse, respond) <- newTriggerEvent
     performEvent $
         onRequest <&> \case
-            Evaluate{..} -> liftIO $ ghc.input $ do
-                let exec = do
-                        GHC.evaluate content
-                        GHC.evaluate "mapM_ hFlush [stdout, stderr]"
-                let log = forever $ liftIO $ do
-                        content <- hGetSome ghc.output defaultChunkSize
-                        respond PartialResponse{..}
-                raceWithDelay_ 1000 exec log `catch` \error -> liftIO (respond Error{..})
-                liftIO $ respond EndResponse{..}
+            Evaluate{..} -> liftIO $ do
+                mv <- newEmptyMVar
+                ghc.input $ do
+                    let exec = do
+                            GHC.evaluate content
+                            GHC.evaluate "mapM_ hFlush [stdout, stderr]"
+                    let log = forever $ liftIO $ do
+                            content <- hGetSome ghc.output defaultChunkSize
+                            respond PartialResponse{..}
+                    race_ exec log `catch` \error -> liftIO (respond Error{..})
+                    liftIO $ respond EndResponse{..}
+                    putMVar mv ()
+                readMVar mv
     pure Client{..}
 
 deriving via (ReaderT Session IO) instance MonadUnliftIO Ghc

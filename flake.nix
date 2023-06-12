@@ -15,10 +15,6 @@
       url = "github:edolstra/flake-compat";
       flake = false;
     };
-    reflex-vty = {
-      url = "github:reflex-frp/reflex-vty/v0.4.0.0";
-      flake = false;
-    };
   };
 
   outputs = inputs: inputs.flake-utils.lib.eachDefaultSystem
@@ -48,7 +44,7 @@
                 dosh = self.callCabal2nix "dosh" (src "dosh") { };
                 lsp-client = self.callCabal2nix "lsp-client" (src "lsp-client") { };
                 reflex-process = doJailbreak super.reflex-process;
-                reflex-vty = doJailbreak (self.callCabal2nix "reflex-vty" inputs.reflex-vty { });
+                reflex-vty = markUnbroken super.reflex-vty;
                 haskell-language-server = lib.pipe super.haskell-language-server [
                   (drv: drv.override { hls-ormolu-plugin = null; })
                   (drv: disableCabalFlag drv "ormolu")
