@@ -103,16 +103,16 @@
         "text-rope-zipper": "text-rope-zipper"
       },
       "locked": {
-        "lastModified": 1719136137,
-        "narHash": "sha256-SHQccSI9Ui+G5QXBTSYZwqwmMvWvI39Zct8gCUnFKRA=",
+        "lastModified": 1719204686,
+        "narHash": "sha256-9IRlzzu34V88aoCR48cbouWoI1+iIdCJvIHNxJLnrSw=",
         "owner": "ners",
         "repo": "terminal-widgets",
-        "rev": "d977596d6f6f8e200bd94c0aacbd23009bf6ba8d",
+        "rev": "6de81ff33c0d6c0f69a4d6c352c1f1c4e8129281",
         "type": "github"
       },
       "original": {
         "owner": "ners",
-        "ref": "doc",
+        "ref": "doc-rebased",
         "repo": "terminal-widgets",
         "type": "github"
       }

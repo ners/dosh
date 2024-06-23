@@ -26,17 +26,16 @@ instance Widget (CodeInput ann) where
     submitEvent = submitEvent . (.input)
     valid = valid . (.input)
     lineCount = lineCount . (.input)
-    toDoc CodeInput{..} = go (Rope.Position 0 0) paddedRope intervals
+    toDoc CodeInput{..} = go (Rope.Position 0 0) rope intervals
       where
-        rope = RopeZipper.toRope input.value
-        paddedRope = padRopeLines input.prompt rope
+        rope = padRopeLines input.prompt $ RopeZipper.toRope input.value
         ropeStart = Rope.Position 0 0
         ropeEnd = Rope.lengthAsPosition rope
         lspPosToRopePos =
             clampExtended (ropeStart, ropeEnd)
                 . fmap (LSP.character . integral +~ Text.length input.prompt >>> view lspRopePos)
         intervals = IntervalMap.toAscList tokens
-        go _ (Rope.null -> True) _ = ""
+        go _ "" _ = ""
         go _ r [] = pretty r
         go pos r ((interval, tokenType) : rest) =
             let
@@ -116,13 +115,12 @@ padRopeLines prefix r =
         allLines = ropeLines r
      in case allLines of
             [] -> Rope.fromText prefix
-            (firstLine : otherLines) -> Rope.fromText prefix <> firstLine <> mconcat ((pad <>) <$> otherLines)
+            (firstLine : otherLines) -> Rope.fromText prefix <> firstLine <> mconcat (mappend pad <$> otherLines)
 
-codeInput :: IO Text
+codeInput :: (MonadIO m) => m Text
 codeInput = do
-    traceShowM tokens
     ci <-
-        withTerminal . runTerminalT . runWidget $
+        runWidgetIO
             CodeInput
                 { input =
                     TextInput
@@ -132,18 +130,17 @@ codeInput = do
                         , value = ""
                         , valueTransform = id
                         }
-                , tokens
+                , tokens =
+                    IntervalMap.fromList
+                        [
+                            ( Interval.interval
+                                (positionToBound $ LSP.Position 0 5)
+                                (positionToBound $ LSP.Position 0 8)
+                            , LSP.SemanticTokenTypes_Type
+                            )
+                        ]
                 }
     pure $ RopeZipper.toText ci.input.value
   where
     positionToBound :: LSP.Position -> (Extended LSP.Position, Interval.Boundary)
     positionToBound pos = (Extended.Finite pos, Interval.Closed)
-    tokens =
-        IntervalMap.fromList
-            [
-                ( Interval.interval
-                    (positionToBound $ LSP.Position 0 5)
-                    (positionToBound $ LSP.Position 0 8)
-                , LSP.SemanticTokenTypes_Type
-                )
-            ]

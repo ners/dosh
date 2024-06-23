@@ -38,6 +38,8 @@ instance Clock Session SemanticTokensClock where
                                 pure $ Just (time, (doc, delta))
         (clock,) <$> liftIO getCurrentTime
 
+instance GetClockProxy SemanticTokensClock
+
 -- todo: this could be an iso
 tokensToTokenDelta :: LSP.SemanticTokens -> LSP.SemanticTokensDelta
 tokensToTokenDelta tokens =

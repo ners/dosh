@@ -22,3 +22,5 @@ instance Clock Session DiagnosticsClock where
                 t <- liftIO getCurrentTime
                 pure (t, d)
         (clock,) <$> liftIO getCurrentTime
+
+instance GetClockProxy DiagnosticsClock

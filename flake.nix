@@ -21,7 +21,7 @@
       flake = false;
     };
     terminal-widgets = {
-      url = "github:ners/terminal-widgets/doc";
+      url = "github:ners/terminal-widgets/doc-rebased";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };

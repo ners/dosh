@@ -63,6 +63,9 @@ library
         data-interval,
         extended-reals,
         extra,
+        ghcide,
+        haskell-language-server,
+        hie-bios,
         lens,
         lsp,
         lsp-client,
@@ -72,10 +75,10 @@ library
         stm,
         terminal,
         terminal-widgets,
-        terminal-widgets,
         text,
         text-rope,
         text-rope-zipper,
+        transformers,
         unordered-containers,
 
 executable dosh

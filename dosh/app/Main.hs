@@ -1,7 +1,9 @@
 module Main where
 
 import Dosh.CodeInput
+import Dosh.LSP.Session
 import Dosh.Prelude
 
 main :: IO ()
-main = void codeInput
+main = runSession do
+    void codeInput
