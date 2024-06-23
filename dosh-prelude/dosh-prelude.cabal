@@ -1,9 +1,10 @@
 cabal-version:      3.0
 name:               dosh-prelude
-version:            23.3
+version:            24.6
 synopsis:           The power of Haskell in your terminal!
 homepage:           https://github.com/ners/dosh
-license:            GPL-3.0-or-later
+license:            Apache-2.0
+license-file:       LICENCE.md
 author:             ners
 maintainer:         ners@gmx.ch
 category:           System
@@ -36,6 +37,7 @@ library
         generic-lens,
         lens,
         sixel,
+        time,
         text,
         unliftio,
         unliftio-core

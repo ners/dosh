@@ -1,10 +1,10 @@
 cabal-version:      3.0
 name:               dosh
-version:            23.3
+version:            24.6
 synopsis:           The power of Haskell in your terminal!
 homepage:           https://github.com/ners/dosh
-license:            GPL-3.0-or-later
-license-file:       LICENCE
+license:            Apache-2.0
+license-file:       LICENCE.md
 author:             ners
 maintainer:         ners@gmx.ch
 category:           System
@@ -22,6 +22,8 @@ common common
         -Wno-all-missed-specialisations
     default-extensions:
         ApplicativeDo
+        Arrows
+        BlockArguments
         DataKinds
         DefaultSignatures
         DeriveAnyClass
@@ -29,69 +31,52 @@ common common
         DerivingStrategies
         DerivingVia
         ExplicitNamespaces
+        LambdaCase
+        NoFieldSelectors
         NoImplicitPrelude
         OverloadedLabels
         OverloadedRecordDot
         OverloadedStrings
+        PackageImports
         RecordWildCards
         RecursiveDo
+        StrictData
         TypeFamilies
         ViewPatterns
     build-depends:
         dosh-prelude,
-        text
 
 library
     import:           common
     hs-source-dirs:   src
     exposed-modules:
-        Data.Sequence.Zipper,
-        Data.Text.CodeZipper,
-        Dosh.Cell,
-        Dosh.GHC.Client,
-        Dosh.GHC.Evaluator,
-        Dosh.GHC.Lexer,
-        Dosh.GHC.Parser,
-        Dosh.GHC.Server,
-        Dosh.GHC.Session,
-        Dosh.LSP.Client,
-        Dosh.LSP.Document,
-        Dosh.LSP.Server,
-        Dosh.Notebook,
-        Dosh.Util
+        Dosh.CodeInput,
+        Dosh.LSP.DiagnosticsClock,
+        Dosh.LSP.SemanticTokensClock,
+        Dosh.LSP.Session,
     other-modules:
-        Reflex.Vty.Widget.Input.Code
+        Prelude,
     build-depends:
         base,
         bytestring,
         containers,
-        data-default,
-        exceptions,
+        data-interval,
+        extended-reals,
         extra,
-        generic-lens,
-        ghc,
-        ghc-paths,
-        ghc-syntax-highlighter,
-        ghcide,
-        hashable,
-        haskell-language-server,
-        hie-bios,
         lens,
+        lsp,
         lsp-client,
         lsp-types,
-        mtl,
-        process,
-        reflex,
-        reflex-vty,
-        skylighting,
-        skylighting-core,
+        prettyprinter,
+        rhine,
         stm,
-        template-haskell,
+        terminal,
+        terminal-widgets,
+        terminal-widgets,
+        text,
         text-rope,
-        these,
+        text-rope-zipper,
         unordered-containers,
-        uuid,
-        vty
 
 executable dosh
     import:           common
@@ -101,28 +86,3 @@ executable dosh
         -threaded
     build-depends:
         dosh,
-        reflex,
-        reflex-vty
-
-test-suite dosh-test
-    import:           common
-    ghc-options:      -threaded
-    type:             exitcode-stdio-1.0
-    main-is:          Spec.hs
-    hs-source-dirs:   test
-    build-depends:
-        QuickCheck,
-        base,
-        containers,
-        dosh,
-        extra,
-        ghcide,
-        hspec,
-        quickcheck-text,
-    other-modules:
-        Data.Sequence.ZipperSpec,
-        Data.Text.CodeZipperSpec,
-        Dosh.GHC.EvaluatorSpec,
-        Dosh.GHC.LexerSpec,
-        Dosh.GHC.ParserSpec,
-        Test.Hspec.Expectations.Extra,

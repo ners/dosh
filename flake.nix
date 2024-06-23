@@ -2,106 +2,113 @@
   description = "dosh: the power of Haskell in your terminal!";
 
   nixConfig = {
-    extra-experimental-features = "nix-command flakes";
-    extra-substituters = "https://dosh.cachix.org";
-    extra-trusted-public-keys = "dosh.cachix.org-1:wRNFshU1IQW71/P0ueRqOdPqzsff/eGNl2MNKpsZy/o=";
+    extra-substituters = "https://cache.ners.ch/haskell";
+    extra-trusted-public-keys = "haskell:WskuxROW5pPy83rt3ZXnff09gvnu80yovdeKDw5Gi3o=";
   };
 
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-unstable";
-    flake-utils.url = "github:numtide/flake-utils";
-    nix-filter.url = "github:numtide/nix-filter";
-    flake-compat = {
-      url = "github:edolstra/flake-compat";
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+    lsp-client = {
+      url = "github:ners/lsp-client";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    monad-schedule = {
+      url = "github:turion/monad-schedule";
       flake = false;
     };
-    reflex-vty = {
-      url = "github:reflex-frp/reflex-vty/v0.4.0.0";
+    rhine = {
+      url = "github:turion/rhine";
       flake = false;
+    };
+    terminal-widgets = {
+      url = "github:ners/terminal-widgets/doc";
+      inputs.nixpkgs.follows = "nixpkgs";
     };
   };
 
-  outputs = inputs: inputs.flake-utils.lib.eachDefaultSystem
-    (system:
-      with builtins;
-      let
-        pkgs = inputs.nixpkgs.legacyPackages.${system};
-        lib = inputs.nixpkgs.lib;
-        src = pname: inputs.nix-filter.lib {
-          root = "${./.}/${pname}";
-          include = [
-            "app"
-            "src"
-            "test"
-            "${pname}.cabal"
-            "CHANGELOG.md"
-            "LICENCE"
-          ];
-        };
-        haskellPackagesOverride = ps: ps.override {
-          overrides = self: super:
-            with pkgs.haskell.lib;
-            let ghcVersionAtLeast = lib.versionAtLeast ps.ghc.version; in
-            builtins.trace "GHC version: ${ps.ghc.version}"
-              ({
-                dosh-prelude = self.callCabal2nix "dosh-prelude" (src "dosh-prelude") { };
-                dosh = self.callCabal2nix "dosh" (src "dosh") { };
-                lsp-client = self.callCabal2nix "lsp-client" (src "lsp-client") { };
-                reflex-process = doJailbreak super.reflex-process;
-                reflex-vty = doJailbreak (self.callCabal2nix "reflex-vty" inputs.reflex-vty { });
-                haskell-language-server = lib.pipe super.haskell-language-server [
-                  (drv: drv.override { hls-ormolu-plugin = null; })
-                  (drv: disableCabalFlag drv "ormolu")
-                ];
-              } // lib.optionalAttrs (ghcVersionAtLeast "9.4") {
-                ghc-syntax-highlighter = super.ghc-syntax-highlighter_0_0_9_0;
-                mmorph = doJailbreak super.mmorph;
-                reflex = doJailbreak super.reflex_0_9_0_0;
-                string-qq = doJailbreak super.string-qq;
-              } // lib.optionalAttrs (ghcVersionAtLeast "9.6") {
-                commutative-semigroups = doJailbreak super.commutative-semigroups;
-                ed25519 = doJailbreak super.ed25519;
-                ghc-trace-events = doJailbreak super.ghc-trace-events;
-                hie-compat = doJailbreak super.hie-compat;
-                indexed-traversable = doJailbreak super.indexed-traversable;
-              });
-        };
-        outputsFor =
-          { haskellPackages
-          , name
-          , pname ? ""
-          , ...
-          }:
-          let ps = haskellPackagesOverride haskellPackages; in
-          {
-            packages.${name} = ps.${pname} or ps;
-            devShells.${name} = ps.shellFor {
-              packages = ps: with ps; [ dosh lsp-client ];
-              withHoogle = true;
-              nativeBuildInputs = with ps; [
-                cabal-fmt
-                cabal-install
-                fourmolu
-                haskell-language-server
-                pkgs.cachix
-                pkgs.nixpkgs-fmt
-              ];
-            };
-            formatter = pkgs.nixpkgs-fmt;
+  outputs = inputs:
+    with builtins;
+    let
+      inherit (inputs.nixpkgs) lib;
+      foreach = xs: f: with lib; foldr recursiveUpdate { } (
+        if isList xs then map f xs
+        else if isAttrs xs then mapAttrsToList f xs
+        else throw "foreach: expected list or attrset but got ${typeOf xs}"
+      );
+      hsSrc = root: with lib.fileset; toSource {
+        inherit root;
+        fileset = fileFilter (file: any file.hasExt ["cabal" "hs" "md"] || file.type == "directory") ./.;
+      };
+      readDirs = root: attrNames (lib.filterAttrs (_: type: type == "directory") (readDir root));
+      readFiles = root: attrNames (lib.filterAttrs (_: type: type == "regular") (readDir root));
+      basename = path: suffix: with lib; pipe path [
+        (splitString "/")
+        last
+        (removeSuffix suffix)
+      ];
+      cabalProjectPackages = root: with lib; foreach (readDirs root) (dir:
+        let
+          path = "${root}/${dir}";
+          files = readFiles path;
+          cabalFiles = filter (strings.hasSuffix ".cabal") files;
+          pnames = map (path: basename path ".cabal") cabalFiles;
+          pname = if pnames == [ ] then null else head pnames;
+        in
+        optionalAttrs (pname != null) { ${pname} = path; }
+      );
+      cabalProjectPnames = root: lib.attrNames (cabalProjectPackages root);
+      cabalProjectOverlay = root: hfinal: hprev: with lib;
+        mapAttrs
+          (pname: path: hfinal.callCabal2nix pname path { })
+          (cabalProjectPackages root);
+      cabalPackageOverlay = name: root: hfinal: hprev: {
+        ${name} = hfinal.callCabal2nix name root { };
+      };
+      project = hsSrc ./.;
+      pnames = cabalProjectPnames project;
+      hpsFor = pkgs: with lib;
+        { default = pkgs.haskellPackages; }
+        // filterAttrs
+          (name: hp: match "ghc[0-9]{2}" name != null && versionAtLeast hp.ghc.version "9.2")
+          pkgs.haskell.packages;
+      overlay = lib.composeManyExtensions [
+        inputs.lsp-client.overlays.default
+        inputs.terminal-widgets.overlays.default
+        (final: prev: {
+          haskell = prev.haskell // {
+            packageOverrides = lib.composeManyExtensions [
+              prev.haskell.packageOverrides
+              (cabalProjectOverlay project)
+              (cabalPackageOverlay "monad-schedule" inputs.monad-schedule)
+              (cabalProjectOverlay inputs.rhine)
+            ];
           };
-      in
-      with lib;
-      foldl' (acc: conf: recursiveUpdate acc (outputsFor conf)) { }
-        (mapAttrsToList (name: haskellPackages: { inherit name haskellPackages; }) pkgs.haskell.packages ++ [
-          {
-            inherit (pkgs) haskellPackages;
-            name = "defaultGhc";
-          }
-          {
-            pname = "dosh";
-            inherit (pkgs) haskellPackages;
-            name = "default";
-          }
-        ])
-    );
+          inherit (hpsFor final) dosh;
+        })
+      ];
+    in
+    {
+      overlays.default = overlay;
+    }
+    //
+    foreach inputs.nixpkgs.legacyPackages
+      (system: pkgs':
+        let pkgs = pkgs'.extend overlay; in
+        {
+          formatter.${system} = pkgs.nixpkgs-fmt;
+          legacyPackages.${system} = pkgs;
+          packages.${system}.default = pkgs.haskellPackages.dosh;
+          devShells.${system} =
+            foreach (hpsFor pkgs) (ghcName: hp: {
+              ${ghcName} = hp.shellFor {
+                packages = ps: map (pname: ps.${pname}) pnames;
+                nativeBuildInputs = with hp; [
+                  pkgs'.haskellPackages.cabal-install
+                  pkgs'.haskellPackages.fourmolu
+                  haskell-language-server
+                ];
+              };
+            });
+        }
+      );
 }

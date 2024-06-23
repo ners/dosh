@@ -8,13 +8,16 @@ module Dosh.Prelude
     , module Data.ByteString
     , module Data.ByteString.Lazy
     , module Data.Char
+    , module Data.Coerce
     , module Data.Foldable
     , module Data.Functor
     , module Data.Generics.Labels
     , module Data.Generics.Product
     , module Data.Maybe
+    , module Data.Ord
     , module Data.String
     , module Data.Text
+    , module Data.Time
     , module Debug.Trace
     , module GHC.Generics
     , module System.IO
@@ -34,13 +37,16 @@ import Control.Monad.IO.Unlift
 import Data.ByteString (ByteString)
 import Data.ByteString.Lazy (LazyByteString)
 import Data.Char
+import Data.Coerce (coerce)
 import Data.Foldable
 import Data.Functor
 import Data.Generics.Labels
 import Data.Generics.Product
 import Data.Maybe
+import Data.Ord
 import Data.String
 import Data.Text (Text)
+import Data.Time (UTCTime, getCurrentTime)
 import Debug.Trace
 import GHC.Generics (Generic)
 import System.IO

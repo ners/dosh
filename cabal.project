@@ -1,4 +1,1 @@
-packages:
-    dosh/
-    dosh-prelude/
-    lsp-client/
+packages: */*.cabal
