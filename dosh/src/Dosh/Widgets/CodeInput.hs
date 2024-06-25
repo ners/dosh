@@ -1,4 +1,4 @@
-module Dosh.CodeInput where
+module Dosh.Widgets.CodeInput where
 
 import Data.ExtendedReal qualified as Extended
 import Data.Interval qualified as Interval

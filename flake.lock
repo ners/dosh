@@ -24,11 +24,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1719064720,
-        "narHash": "sha256-9Jl0aZ7Yvyr2LFi2VQdJBEr9Omw0Nq87hwYwzFVSukY=",
+        "lastModified": 1719338976,
+        "narHash": "sha256-M9MEN9KTrASRy8rkmODO7V6p50kq2QzpuFqIvCRGf9E=",
         "owner": "ners",
         "repo": "lsp-client",
-        "rev": "1c839e45af4678432ac51d272f282765590dd1e9",
+        "rev": "fad7bc209dceeed09ddf3856a6941e00f2b48ba4",
         "type": "github"
       },
       "original": {
@@ -72,11 +72,11 @@
     "rhine": {
       "flake": false,
       "locked": {
-        "lastModified": 1717761617,
-        "narHash": "sha256-bxc6SnnS++ClaeCFj0T1X2Pg/bna1nGhnHajFDHq/Ps=",
+        "lastModified": 1719324434,
+        "narHash": "sha256-wDzy/ZgcwEzJSTN8lW1YzmeVn5GEHfOrOAHTdWiNqV0=",
         "owner": "turion",
         "repo": "rhine",
-        "rev": "858b0334808930a0ac6bd6d9418000b8d87465ae",
+        "rev": "3e085d87106533514e1a55df4fa4030b946e1eb7",
         "type": "github"
       },
       "original": {
@@ -103,16 +103,15 @@
         "text-rope-zipper": "text-rope-zipper"
       },
       "locked": {
-        "lastModified": 1719204686,
+        "lastModified": 1719339961,
         "narHash": "sha256-9IRlzzu34V88aoCR48cbouWoI1+iIdCJvIHNxJLnrSw=",
         "owner": "ners",
         "repo": "terminal-widgets",
-        "rev": "6de81ff33c0d6c0f69a4d6c352c1f1c4e8129281",
+        "rev": "87dd90a1efd57053b676f31affee4bc4142c24c0",
         "type": "github"
       },
       "original": {
         "owner": "ners",
-        "ref": "doc-rebased",
         "repo": "terminal-widgets",
         "type": "github"
       }

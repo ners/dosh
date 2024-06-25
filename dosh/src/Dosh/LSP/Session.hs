@@ -12,6 +12,7 @@ import Language.LSP.Client (runSessionWithHandles)
 import Language.LSP.Client.Session (Session, initialize)
 import System.Process.Extra (createPipe)
 import Prelude
+import System.Terminal (TerminalT)
 
 runSession :: (MonadIO m) => Session a -> m a
 runSession actions = do
@@ -57,18 +58,39 @@ createLoggedPipe logFile = do
     pure (readEnd, writeEnd')
 
 flowSession
-    :: ( Clock Session cl
-       , Clock Session (Out cl)
-       , GetClockProxy cl
-       , Time cl ~ UTCTime
-       , Time (In cl) ~ Time cl
-       , Time (Out cl) ~ Time cl
+    :: forall m eventsCl renderCl st t
+       . ( MonadIO m
+       , Clock Session eventsCl
+       , Clock Session (In eventsCl)
+       , Clock Session (Out eventsCl)
+       , GetClockProxy eventsCl
+       , Time eventsCl ~ UTCTime
+       , Time (In eventsCl) ~ Time eventsCl
+       , Time (Out eventsCl) ~ Time eventsCl
+       , Clock Session renderCl
+       , Clock Session (In renderCl)
+       , Clock Session (Out renderCl)
+       , GetClockProxy renderCl
+       , Time renderCl ~ UTCTime
+       , Time (In renderCl) ~ Time eventsCl
+       , Time (Out renderCl) ~ Time eventsCl
        )
-    => ClSF Session DiagnosticsClock () ()
-    -> ClSF Session SemanticTokensClock () ()
-    -> Rhine Session cl () ()
-    -> IO ()
-flowSession diag sem rh = runSession do
-    let diagRh = diag @@ DiagnosticsClock
-        semRh = sem @@ SemanticTokensClock
-    flow $ (diagRh |@| semRh) |@| rh
+    => st
+    -> ClSF Session DiagnosticsClock st st
+    -> ClSF Session SemanticTokensClock st st
+    -> Rhine Session eventsCl st st
+    -> Rhine (TerminalT t m) renderCl st ()
+    -> m ()
+flowSession initialState diag sem eventsRh renderRh = runSession do
+    let diagRh = liftClSFAndClock diag @@ liftClock DiagnosticsClock
+        semRh = liftClSFAndClock sem @@ liftClock SemanticTokensClock
+        notificationsRh = feedbackify diagRh |@| feedbackify semRh
+    flow $
+        feedbackRhine
+            (keepLast initialState)
+            (notificationsRh |@| feedbackify eventsRh)
+            >-- keepLast initialState
+            --> renderRh
+
+feedbackify :: (Monad m) => Rhine m cl a a -> Rhine m cl ((), a) (a, a)
+feedbackify rh = snd ^>>@ rh @>>^ (\st -> (st, st))
