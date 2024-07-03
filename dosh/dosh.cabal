@@ -83,6 +83,7 @@ library
         text-rope-zipper,
         transformers,
         unordered-containers,
+        monad-schedule,
 
 executable dosh
     import:           common

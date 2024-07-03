@@ -1,5 +1,7 @@
 module Dosh.LSP.Session where
 
+import Control.Monad.Schedule.Class (MonadSchedule)
+import Control.Monad.Trans (MonadTrans)
 import Data.ByteString (hGetSome, hPut)
 import Data.ByteString qualified as ByteString
 import Data.ByteString.Builder.Extra (defaultChunkSize)
@@ -11,8 +13,8 @@ import HlsPlugins (idePlugins)
 import Language.LSP.Client (runSessionWithHandles)
 import Language.LSP.Client.Session (Session, initialize)
 import System.Process.Extra (createPipe)
-import Prelude
 import System.Terminal (TerminalT)
+import Prelude
 
 runSession :: (MonadIO m) => Session a -> m a
 runSession actions = do
@@ -57,32 +59,48 @@ createLoggedPipe logFile = do
         hPut writeEnd c
     pure (readEnd, writeEnd')
 
+runTerminalSession :: forall t a m. (MonadIO m) => TerminalT t Session a -> m a
+runTerminalSession = undefined
+
 flowSession
     :: forall m eventsCl renderCl st t
-       . ( MonadIO m
-       , Clock Session eventsCl
-       , Clock Session (In eventsCl)
-       , Clock Session (Out eventsCl)
+     . ( MonadIO m
+       , Clock (TerminalT t Session) eventsCl
+       , Clock (TerminalT t Session) (In eventsCl)
+       , Clock (TerminalT t Session) (Out eventsCl)
        , GetClockProxy eventsCl
        , Time eventsCl ~ UTCTime
        , Time (In eventsCl) ~ Time eventsCl
        , Time (Out eventsCl) ~ Time eventsCl
-       , Clock Session renderCl
-       , Clock Session (In renderCl)
-       , Clock Session (Out renderCl)
+       , Clock (TerminalT t Session) renderCl
+       , Clock (TerminalT t Session) (In renderCl)
+       , Clock (TerminalT t Session) (Out renderCl)
        , GetClockProxy renderCl
        , Time renderCl ~ UTCTime
        , Time (In renderCl) ~ Time eventsCl
        , Time (Out renderCl) ~ Time eventsCl
+       , MonadSchedule (TerminalT t Session)
        )
     => st
     -> ClSF Session DiagnosticsClock st st
     -> ClSF Session SemanticTokensClock st st
-    -> Rhine Session eventsCl st st
-    -> Rhine (TerminalT t m) renderCl st ()
+    -> Rhine (TerminalT t Session) eventsCl st st
+    -> Rhine (TerminalT t Session) renderCl st ()
     -> m ()
-flowSession initialState diag sem eventsRh renderRh = runSession do
-    let diagRh = liftClSFAndClock diag @@ liftClock DiagnosticsClock
+flowSession initialState diag sem eventsRh renderRh = runTerminalSession do
+    let diagRh
+            :: Rhine
+                (TerminalT t Session)
+                (LiftClock Session (TerminalT t) DiagnosticsClock)
+                st
+                st
+        diagRh = liftClSFAndClock diag @@ liftClock DiagnosticsClock
+        semRh
+            :: Rhine
+                (TerminalT t Session)
+                (LiftClock Session (TerminalT t) SemanticTokensClock)
+                st
+                st
         semRh = liftClSFAndClock sem @@ liftClock SemanticTokensClock
         notificationsRh = feedbackify diagRh |@| feedbackify semRh
     flow $
