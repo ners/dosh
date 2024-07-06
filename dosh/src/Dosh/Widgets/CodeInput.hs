@@ -1,6 +1,5 @@
 module Dosh.Widgets.CodeInput where
 
-import Data.ExtendedReal qualified as Extended
 import Data.Interval qualified as Interval
 import Data.IntervalMap.Strict (IntervalMap)
 import Data.IntervalMap.Strict qualified as IntervalMap
@@ -116,31 +115,3 @@ padRopeLines prefix r =
      in case allLines of
             [] -> Rope.fromText prefix
             (firstLine : otherLines) -> Rope.fromText prefix <> firstLine <> mconcat (mappend pad <$> otherLines)
-
-codeInput :: (MonadIO m) => m Text
-codeInput = do
-    ci <-
-        runWidgetIO
-            CodeInput
-                { input =
-                    TextInput
-                        { prompt = "-> "
-                        , multiline = True
-                        , required = True
-                        , value = ""
-                        , valueTransform = id
-                        }
-                , tokens =
-                    IntervalMap.fromList
-                        [
-                            ( Interval.interval
-                                (positionToBound $ LSP.Position 0 5)
-                                (positionToBound $ LSP.Position 0 8)
-                            , LSP.SemanticTokenTypes_Type
-                            )
-                        ]
-                }
-    pure $ RopeZipper.toText ci.input.value
-  where
-    positionToBound :: LSP.Position -> (Extended LSP.Position, Interval.Boundary)
-    positionToBound pos = (Extended.Finite pos, Interval.Closed)

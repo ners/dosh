@@ -12,13 +12,9 @@
       url = "github:ners/lsp-client";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    monad-schedule = {
-      url = "github:turion/monad-schedule";
-      flake = false;
-    };
     rhine = {
-      url = "github:turion/rhine";
-      flake = false;
+      url = "github:ners/rhine/flake";
+      inputs.nixpkgs.follows = "nixpkgs";
     };
     terminal-widgets = {
       url = "github:ners/terminal-widgets";
@@ -74,13 +70,12 @@
       overlay = lib.composeManyExtensions [
         inputs.lsp-client.overlays.default
         inputs.terminal-widgets.overlays.default
+        inputs.rhine.overlays.default
         (final: prev: {
           haskell = prev.haskell // {
             packageOverrides = lib.composeManyExtensions [
               prev.haskell.packageOverrides
               (cabalProjectOverlay project)
-              (cabalPackageOverlay "monad-schedule" inputs.monad-schedule)
-              (cabalProjectOverlay inputs.rhine)
             ];
           };
           inherit (hpsFor final) dosh;

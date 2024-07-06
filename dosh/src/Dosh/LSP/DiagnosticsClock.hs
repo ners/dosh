@@ -8,7 +8,7 @@ import Prelude
 
 data DiagnosticsClock = DiagnosticsClock
 
-instance Clock Session DiagnosticsClock where
+instance (MonadIO m) => Clock (SessionT m) DiagnosticsClock where
     type Time DiagnosticsClock = UTCTime
     type Tag DiagnosticsClock = (LSP.TextDocumentIdentifier, [LSP.Diagnostic])
     initClock DiagnosticsClock = do

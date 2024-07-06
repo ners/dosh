@@ -2,23 +2,26 @@
 
 module Prelude
     ( module Prelude
-    , module Dosh.Prelude
-    , module FRP.Rhine
-    , module Data.Text.Rope
+    , module Control.Monad.Catch
     , module Data.ExtendedReal
     , module Data.Interval
+    , module Data.Text.Rope
+    , module Dosh.Prelude
+    , module FRP.Rhine
     , module Prettyprinter
     )
 where
 
+import Control.Monad.Catch (MonadCatch, MonadMask, MonadThrow)
 import Data.ExtendedReal (Extended)
 import Data.ExtendedReal qualified as Extended
 import Data.Interval (Interval)
 import Data.Interval qualified as Interval
 import Data.Text.Rope (Rope)
 import Data.Text.Rope qualified as Rope
-import Dosh.Prelude
+import Dosh.Prelude hiding (try)
 import FRP.Rhine hiding (integral, mapMaybe, newChan, try)
+import Language.LSP.Protocol.Types qualified as LSP
 import Prettyprinter (Doc, Pretty (pretty), annotate, pretty)
 import System.IO.Unsafe (unsafePerformIO)
 
@@ -43,6 +46,14 @@ integral = iso fromIntegral fromIntegral
 
 ropeText :: Iso' Rope Text
 ropeText = iso Rope.toText Rope.fromText
+
+ropeLspPosition :: Iso' Rope.Position LSP.Position
+ropeLspPosition = iso sa bt
+  where
+    sa Rope.Position{..} =
+        LSP.Position{_line = fromIntegral posLine, _character = fromIntegral posColumn}
+    bt LSP.Position{..} =
+        Rope.Position{posLine = fromIntegral _line, posColumn = fromIntegral _character}
 
 -- | Clamp the Extended value between the given finite bounds.
 clampExtended :: (Ord r) => (r, r) -> Extended r -> r

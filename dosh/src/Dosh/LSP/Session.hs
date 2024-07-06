@@ -1,7 +1,7 @@
 module Dosh.LSP.Session where
 
 import Control.Monad.Schedule.Class (MonadSchedule)
-import Control.Monad.Trans (MonadTrans)
+import Data.Automaton.Trans.Except (reactimateExcept, try)
 import Data.ByteString (hGetSome, hPut)
 import Data.ByteString qualified as ByteString
 import Data.ByteString.Builder.Extra (defaultChunkSize)
@@ -11,12 +11,11 @@ import Dosh.LSP.DiagnosticsClock (DiagnosticsClock (DiagnosticsClock))
 import Dosh.LSP.SemanticTokensClock (SemanticTokensClock (SemanticTokensClock))
 import HlsPlugins (idePlugins)
 import Language.LSP.Client (runSessionWithHandles)
-import Language.LSP.Client.Session (Session, initialize)
+import Language.LSP.Client.Session (SessionT, initialize)
 import System.Process.Extra (createPipe)
-import System.Terminal (TerminalT)
 import Prelude
 
-runSession :: (MonadIO m) => Session a -> m a
+runSession :: (MonadUnliftIO m) => SessionT m a -> m a
 runSession actions = do
     (serverInput, serverOutput) <- liftIO $ do
         -- TODO: try to use Knob rather than pipes
@@ -32,7 +31,7 @@ runSession actions = do
             recorder = Recorder{logger_ = liftIO . logTrigger}
         forkIO $ ghcide recorder inRead outWrite
         pure (inWrite, outRead)
-    liftIO . runSessionWithHandles serverOutput serverInput $ initialize >> actions
+    runSessionWithHandles serverOutput serverInput $ initialize >> actions
 
 -- TODO: can we get rid of handles altogether?
 ghcide :: Recorder (WithPriority Text) -> Handle -> Handle -> IO ()
@@ -59,56 +58,62 @@ createLoggedPipe logFile = do
         hPut writeEnd c
     pure (readEnd, writeEnd')
 
-runTerminalSession :: forall t a m. (MonadIO m) => TerminalT t Session a -> m a
-runTerminalSession = undefined
-
 flowSession
-    :: forall m eventsCl renderCl st t
-     . ( MonadIO m
-       , Clock (TerminalT t Session) eventsCl
-       , Clock (TerminalT t Session) (In eventsCl)
-       , Clock (TerminalT t Session) (Out eventsCl)
-       , GetClockProxy eventsCl
-       , Time eventsCl ~ UTCTime
-       , Time (In eventsCl) ~ Time eventsCl
-       , Time (Out eventsCl) ~ Time eventsCl
-       , Clock (TerminalT t Session) renderCl
-       , Clock (TerminalT t Session) (In renderCl)
-       , Clock (TerminalT t Session) (Out renderCl)
-       , GetClockProxy renderCl
-       , Time renderCl ~ UTCTime
-       , Time (In renderCl) ~ Time eventsCl
-       , Time (Out renderCl) ~ Time eventsCl
-       , MonadSchedule (TerminalT t Session)
+    :: forall m m' e me' st cl cl'
+     . ( Monad m
+       , Clock m DiagnosticsClock
+       , Clock m SemanticTokensClock
+       , Monad m'
+       , me' ~ ExceptT e m'
+       , MonadSchedule m'
+       , Clock me' cl
+       , Clock me' (In cl)
+       , Clock me' (Out cl)
+       , GetClockProxy cl
+       , Time cl ~ UTCTime
+       , Time (In cl) ~ UTCTime
+       , Time (Out cl) ~ UTCTime
+       , Clock me' cl'
+       , Clock me' (In cl')
+       , Clock me' (Out cl')
+       , GetClockProxy cl'
+       , Time cl' ~ UTCTime
+       , Time (In cl') ~ UTCTime
        )
     => st
-    -> ClSF Session DiagnosticsClock st st
-    -> ClSF Session SemanticTokensClock st st
-    -> Rhine (TerminalT t Session) eventsCl st st
-    -> Rhine (TerminalT t Session) renderCl st ()
-    -> m ()
-flowSession initialState diag sem eventsRh renderRh = runTerminalSession do
-    let diagRh
-            :: Rhine
-                (TerminalT t Session)
-                (LiftClock Session (TerminalT t) DiagnosticsClock)
-                st
-                st
-        diagRh = liftClSFAndClock diag @@ liftClock DiagnosticsClock
-        semRh
-            :: Rhine
-                (TerminalT t Session)
-                (LiftClock Session (TerminalT t) SemanticTokensClock)
-                st
-                st
-        semRh = liftClSFAndClock sem @@ liftClock SemanticTokensClock
-        notificationsRh = feedbackify diagRh |@| feedbackify semRh
-    flow $
+    -> ClSF m DiagnosticsClock st st
+    -> ClSF m SemanticTokensClock st st
+    -> (forall a. m a -> me' a)
+    -> Rhine me' cl st st
+    -> Rhine me' cl' st ()
+    -> m' e
+flowSession initialState diagS semS monadMorphism otherRh sinkRh =
+    flowExcept $
         feedbackRhine
             (keepLast initialState)
-            (notificationsRh |@| feedbackify eventsRh)
+            ( feedbackify $ (diagRh |@| semRh) |@| otherRh
+            )
             >-- keepLast initialState
-            --> renderRh
+            --> sinkRh
+  where
+    diagS' = hoistClSFAndClock monadMorphism diagS
+    diagCl = HoistClock{unhoistedClock = DiagnosticsClock, monadMorphism}
+    diagRh = diagS' @@ diagCl
+    semS' = hoistClSFAndClock monadMorphism semS
+    semCl = HoistClock{unhoistedClock = SemanticTokensClock, monadMorphism}
+    semRh = semS' @@ semCl
 
 feedbackify :: (Monad m) => Rhine m cl a a -> Rhine m cl ((), a) (a, a)
 feedbackify rh = snd ^>>@ rh @>>^ (\st -> (st, st))
+
+flowExcept
+    :: ( Monad m
+       , Clock (ExceptT e m) cl
+       , GetClockProxy cl
+       )
+    => Rhine (ExceptT e m) cl () ()
+    -> m e
+flowExcept rhine =
+    runExceptT (eraseClock rhine) >>= \case
+        Left e -> pure e
+        Right msf -> reactimateExcept . try $ msf >>> arr (const ())

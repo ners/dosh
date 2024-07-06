@@ -50,18 +50,23 @@ library
     import:           common
     hs-source-dirs:   src
     exposed-modules:
+        Dosh.App,
         Dosh.LSP.DiagnosticsClock,
         Dosh.LSP.SemanticTokensClock,
         Dosh.LSP.Session,
         Dosh.Program,
         Dosh.Widgets.CodeInput,
     other-modules:
+        Language.LSP.Protocol.Types.Extra,
         Prelude,
+        System.Terminal.Extra,
     build-depends:
+        automaton,
         base,
         bytestring,
         containers,
         data-interval,
+        exceptions,
         extended-reals,
         extra,
         ghcide,
@@ -75,6 +80,7 @@ library
         prettyprinter,
         rhine,
         rhine-terminal,
+        row-types,
         stm,
         terminal,
         terminal-widgets,

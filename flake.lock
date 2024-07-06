@@ -24,42 +24,26 @@
         ]
       },
       "locked": {
-        "lastModified": 1719338976,
-        "narHash": "sha256-M9MEN9KTrASRy8rkmODO7V6p50kq2QzpuFqIvCRGf9E=",
+        "lastModified": 1720299747,
+        "narHash": "sha256-EXDABidx9E4ORkPRgknt8db5HVthY/Scdnxpb52w11c=",
         "owner": "ners",
         "repo": "lsp-client",
-        "rev": "fad7bc209dceeed09ddf3856a6941e00f2b48ba4",
+        "rev": "02595d6015c676d9bd9018462dc19684b58ab98b",
         "type": "github"
       },
       "original": {
         "owner": "ners",
         "repo": "lsp-client",
-        "type": "github"
-      }
-    },
-    "monad-schedule": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1716478340,
-        "narHash": "sha256-BibvCE5JKIEjR7Tv6uVrgPTVtxHaaT4f7Wi5xmksBL0=",
-        "owner": "turion",
-        "repo": "monad-schedule",
-        "rev": "f67195d9ff5f0efd03957048dddda9f8a9962330",
-        "type": "github"
-      },
-      "original": {
-        "owner": "turion",
-        "repo": "monad-schedule",
         "type": "github"
       }
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1719075281,
-        "narHash": "sha256-CyyxvOwFf12I91PBWz43iGT1kjsf5oi6ax7CrvaMyAo=",
+        "lastModified": 1720031269,
+        "narHash": "sha256-rwz8NJZV+387rnWpTYcXaRNvzUSnnF9aHONoJIYmiUQ=",
         "owner": "nixos",
         "repo": "nixpkgs",
-        "rev": "a71e967ef3694799d0c418c98332f7ff4cc5f6af",
+        "rev": "9f4128e00b0ae8ec65918efeba59db998750ead6",
         "type": "github"
       },
       "original": {
@@ -70,17 +54,22 @@
       }
     },
     "rhine": {
-      "flake": false,
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
       "locked": {
-        "lastModified": 1719324434,
-        "narHash": "sha256-wDzy/ZgcwEzJSTN8lW1YzmeVn5GEHfOrOAHTdWiNqV0=",
-        "owner": "turion",
+        "lastModified": 1719562238,
+        "narHash": "sha256-mzvGPwQYl2Xy/9/BTFBtBIqtBd6NUoPZCUk2dCIC0+I=",
+        "owner": "ners",
         "repo": "rhine",
-        "rev": "3e085d87106533514e1a55df4fa4030b946e1eb7",
+        "rev": "5a942e59d44e94e4971fe122e9054b15b778d984",
         "type": "github"
       },
       "original": {
-        "owner": "turion",
+        "owner": "ners",
+        "ref": "flake",
         "repo": "rhine",
         "type": "github"
       }
@@ -88,7 +77,6 @@
     "root": {
       "inputs": {
         "lsp-client": "lsp-client",
-        "monad-schedule": "monad-schedule",
         "nixpkgs": "nixpkgs",
         "rhine": "rhine",
         "terminal-widgets": "terminal-widgets"
@@ -103,11 +91,11 @@
         "text-rope-zipper": "text-rope-zipper"
       },
       "locked": {
-        "lastModified": 1719339961,
-        "narHash": "sha256-9IRlzzu34V88aoCR48cbouWoI1+iIdCJvIHNxJLnrSw=",
+        "lastModified": 1719471265,
+        "narHash": "sha256-y9oT5Zg+5DI3dfFMBGrBVSrNBJlh2tjocDSopbllVHw=",
         "owner": "ners",
         "repo": "terminal-widgets",
-        "rev": "87dd90a1efd57053b676f31affee4bc4142c24c0",
+        "rev": "d62eeab037a08ecb5b9abed757af63eb07f9d498",
         "type": "github"
       },
       "original": {

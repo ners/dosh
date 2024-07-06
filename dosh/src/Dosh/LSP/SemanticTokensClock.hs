@@ -9,7 +9,7 @@ import Prelude
 
 data SemanticTokensClock = SemanticTokensClock
 
-instance Clock Session SemanticTokensClock where
+instance (MonadIO m) => Clock (SessionT m) SemanticTokensClock where
     type Time SemanticTokensClock = UTCTime
     type
         Tag SemanticTokensClock =
@@ -51,8 +51,9 @@ tokensToTokenDelta tokens =
         ^. LSP.resultId
 
 requestFullTokens
-    :: LSP.TextDocumentIdentifier
-    -> Session (Maybe LSP.SemanticTokensDelta)
+    :: (MonadIO m)
+    => LSP.TextDocumentIdentifier
+    -> SessionT m (Maybe LSP.SemanticTokensDelta)
 requestFullTokens doc =
     request
         LSP.SMethod_TextDocumentSemanticTokensFull
@@ -66,9 +67,10 @@ requestFullTokens doc =
             LSP.TResponseMessage{} -> pure Nothing
 
 requestTokensDelta
-    :: LSP.TextDocumentIdentifier
+    :: (MonadIO m)
+    => LSP.TextDocumentIdentifier
     -> Text
-    -> Session (Maybe LSP.SemanticTokensDelta)
+    -> SessionT m (Maybe LSP.SemanticTokensDelta)
 requestTokensDelta doc _previousResultId =
     request
         LSP.SMethod_TextDocumentSemanticTokensFullDelta
