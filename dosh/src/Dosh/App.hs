@@ -2,13 +2,15 @@
 
 module Dosh.App where
 
+import Control.Monad.Schedule.Class
+import Data.List.NonEmpty
 import Language.LSP.Client.Session (MonadSession, SessionT)
 import System.Terminal
 import System.Terminal.Extra ()
-import System.Terminal.Internal (LocalTerminal)
+import System.Terminal.Internal (LocalTerminal, Terminal)
 import Prelude
 
-newtype AppT m a = App {unApp :: ExceptT Interrupt (TerminalT LocalTerminal (SessionT m)) a}
+newtype AppT t m a = App {unApp :: TerminalT t (SessionT m) a}
     deriving newtype
         ( Monad
         , Applicative
@@ -22,17 +24,28 @@ newtype AppT m a = App {unApp :: ExceptT Interrupt (TerminalT LocalTerminal (Ses
         , MonadSession
         )
 
-type App = AppT IO
+type AppExceptT e t m = ExceptT e (AppT t m)
+
+type App = AppT LocalTerminal IO
+
+type AppExcept = AppExceptT Interrupt LocalTerminal IO
+
+instance (MonadSchedule (TerminalT t (SessionT m)), Monad m) => MonadSchedule (AppT t m) where
+    schedule :: NonEmpty (AppT t m a) -> AppT t m (NonEmpty a, [AppT t m a])
+    schedule as = App do
+        (x, y) <- schedule (as <&> (.unApp))
+        pure (x, App <$> y)
 
 instance
     ( MonadIO m
     , MonadThrow m
-    , MonadColorPrinter (TerminalT LocalTerminal (SessionT m))
+    , MonadColorPrinter (TerminalT t (SessionT m))
+    , Terminal t
     )
-    => MonadColorPrinter (AppT m)
+    => MonadColorPrinter (AppT t m)
     where
-    data Color (AppT m)
-        = ColorT (Color (ExceptT Interrupt (TerminalT LocalTerminal (SessionT m))))
+    data Color (AppT t m)
+        = ColorT (Color (TerminalT t (SessionT m)))
     black = ColorT black
     red = ColorT red
     green = ColorT green
@@ -48,13 +61,14 @@ instance
 instance
     ( MonadIO m
     , MonadThrow m
-    , MonadMarkupPrinter (ExceptT Interrupt (TerminalT LocalTerminal (SessionT m)))
+    , MonadMarkupPrinter (TerminalT t (SessionT m))
+    , Terminal t
     )
-    => MonadMarkupPrinter (AppT m)
+    => MonadMarkupPrinter (AppT t m)
     where
-    data Attribute (AppT m)
+    data Attribute (AppT t m)
         = AttributeT
-            (Attribute (ExceptT Interrupt (TerminalT LocalTerminal (SessionT m))))
+            (Attribute (TerminalT t (SessionT m)))
         deriving stock (Eq)
     setAttribute (AttributeT a) = App (setAttribute a)
     resetAttribute (AttributeT a) = App (resetAttribute a)
@@ -64,10 +78,10 @@ instance
 instance
     ( MonadIO m
     , MonadThrow m
-    , MonadFormattingPrinter
-        (ExceptT Interrupt (TerminalT LocalTerminal (SessionT m)))
+    , MonadFormattingPrinter (TerminalT t (SessionT m))
+    , Terminal t
     )
-    => MonadFormattingPrinter (AppT m)
+    => MonadFormattingPrinter (AppT t m)
     where
     bold = AttributeT bold
     italic = AttributeT italic

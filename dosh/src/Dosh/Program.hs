@@ -2,11 +2,11 @@
 
 module Dosh.Program where
 
-import Control.Monad.Trans.Class (lift)
 import Data.Text qualified as Text
 import Data.Text.IO qualified as Text
 import Data.Text.Rope.Zipper qualified as RopeZipper
 import Data.Text.Utf16.Rope.Mixed qualified as MixedRope
+import Dosh.App
 import Dosh.LSP.DiagnosticsClock (DiagnosticsClock)
 import Dosh.LSP.SemanticTokensClock (SemanticTokensClock)
 import Dosh.LSP.Session (flowSession, runSession)
@@ -17,22 +17,19 @@ import FRP.Rhine.Terminal
     ( TerminalEventClock (TerminalEventClock)
     )
 import Language.LSP.Client.Session
-    ( SessionT
-    , changeDoc
+    ( changeDoc
     , documentContents
+    , liftSession
     , openDoc
     )
 import Language.LSP.Protocol.Types qualified as LSP
 import Language.LSP.Protocol.Types.Extra (partialTextDocumentContentChangeEvent)
 import System.Terminal
     ( Interrupt (Interrupt)
-    , MonadTerminal
-    , TerminalT
     , runTerminalT
     , withTerminal
     )
 import System.Terminal qualified as Terminal
-import System.Terminal.Extra
 import System.Terminal.Widgets.Common (Widget)
 import System.Terminal.Widgets.Common qualified as Widget
 import System.Terminal.Widgets.TextInput
@@ -107,9 +104,7 @@ documentChanges (doshPosition -> oldPos, _) (Terminal.KeyEvent Terminal.EnterKey
     ]
 documentChanges _ _ = []
 
-handleEvents
-    :: (MonadIO m', m ~ TerminalT t (SessionT m'))
-    => Rhine (ExceptT Interrupt m) TerminalEventClock (DoshState t') (DoshState t')
+handleEvents :: Rhine AppExcept TerminalEventClock (DoshState t') (DoshState t')
 handleEvents = withClock TerminalEventClock $ proc st -> do
     tag <- tagS -< ()
     case tag of
@@ -122,23 +117,21 @@ handleEvents = withClock TerminalEventClock $ proc st -> do
                 returnA -< st & #active .~ False
             | otherwise -> do
                 let newState = st & #input %~ Widget.handleEvent e
-                arrMCl (lift . lift . uncurry changeDoc)
+                arrMCl (uncurry changeDoc)
                     -<
                         (st.documentIdentifier, documentChanges (st, newState) e)
                 returnA -< newState
 
 debugRh
-    :: (MonadIO m', m ~ TerminalT t (SessionT m'), m'' ~ ExceptT Interrupt m)
-    => Rhine m'' (HoistClock IO m'' (Millisecond 1000)) (DoshState t') ()
+    :: Rhine AppExcept (HoistClock IO AppExcept (Millisecond 1000)) (DoshState t') ()
 debugRh = withClock (ioClock waitClock) $ proc st -> do
-    contents <- arrMCl (lift . lift . documentContents) -< st.documentIdentifier
+    contents <- arrMCl documentContents -< st.documentIdentifier
     arrMCl (liftIO . Text.writeFile "lsp-contents.txt")
         -<
             MixedRope.toText $ fromMaybe "" contents
 
 render
-    :: (MonadTerminal m)
-    => Rhine m (HoistClock IO m (Millisecond 16)) (DoshState t) ()
+    :: Rhine AppExcept (HoistClock IO AppExcept (Millisecond 16)) (DoshState t) ()
 render = withClock (ioClock waitClock) . feedback Nothing $ proc (new, old) -> do
     arrMCl (uncurry Widget.render) -< (old <&> (.input), new.input)
     arrMCl (const Terminal.flush) -< ()
@@ -146,13 +139,13 @@ render = withClock (ioClock waitClock) . feedback Nothing $ proc (new, old) -> d
 
 runDosh :: IO ()
 runDosh =
-    void . runSession . withTerminal . runTerminalT $ do
-        uri <- lift $ openDoc "Foobar.hs" "haskell"
+    void . runSession . withTerminal . runTerminalT . (.unApp) $ do
+        uri <- liftSession $ openDoc "Foobar.hs" "haskell"
         flowSession
             (initialState uri)
             handleDiagnostics
             handleSemanticTokens
-            (lift . lift)
+            liftSession
             handleEvents
             (debugRh |@| render)
   where
