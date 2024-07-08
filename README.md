@@ -1,4 +1,4 @@
-<img align="left" width="80" height="80" src="assets/dosh-minimal.svg" alt="dosh logo">
+<img align="left" width="80" height="80" style="position:relative; z-index:100;" src="assets/dosh-minimal.svg" alt="dosh logo">
 
 # dosh
 

@@ -1,14 +1,38 @@
+{-# LANGUAGE QuasiQuotes #-}
+
 module Dosh.LSP.Session where
 
+import Colog.Core (LogAction (..), Severity (..), WithSeverity (..))
 import Control.Monad.Schedule.Class (MonadSchedule)
+import Data.Aeson.QQ.Simple
 import Data.Automaton.Trans.Except (reactimateExcept, try)
 import Data.ByteString (hGetSome, hPut)
 import Data.ByteString qualified as ByteString
 import Data.ByteString.Builder.Extra (defaultChunkSize)
-import Development.IDE (Recorder (..), WithPriority, cmapWithPrio)
+import Data.Default (Default (def))
+import Data.Text.IO qualified as Text
+import Development.IDE
+    ( Priority (..)
+    , Recorder (..)
+    , WithPriority (..)
+    , cmap
+    , cmapWithPrio
+    )
 import Development.IDE.Main (Arguments (..), defaultArguments, defaultMain)
+import Development.IDE.Session
+    ( SessionLoadingOptions (findCradle, loadCradle)
+    )
+import Development.IDE.Session qualified as HLS
 import Dosh.LSP.DiagnosticsClock (DiagnosticsClock (DiagnosticsClock))
 import Dosh.LSP.SemanticTokensClock (SemanticTokensClock (SemanticTokensClock))
+import GHC.IsList (IsList (fromList))
+import HIE.Bios (Cradle)
+import HIE.Bios qualified as Cradle
+import HIE.Bios.Config qualified
+import HIE.Bios.Config qualified as Cradle
+import HIE.Bios.Cradle qualified as Cradle
+import HIE.Bios.Types qualified
+import HIE.Bios.Types qualified as Cradle
 import HlsPlugins (idePlugins)
 import Language.LSP.Client (runSessionWithHandles)
 import Language.LSP.Client.Session (SessionT, initialize)
@@ -17,6 +41,11 @@ import Prelude
 
 runSession :: (MonadUnliftIO m) => SessionT m a -> m a
 runSession actions = do
+    logChan <- newTChanIO
+    void . forkIO . forever $
+        atomically (readTChan logChan) >>= \WithPriority{..} ->
+            liftIO . Text.appendFile "lsp-error.log" $
+                mconcat [ishow priority, ": ", payload, "\n", ishow callStack_, "\n"]
     (serverInput, serverOutput) <- liftIO $ do
         -- TODO: try to use Knob rather than pipes
         (inRead, inWrite) <- createLoggedPipe "lsp-input.log"
@@ -26,12 +55,23 @@ runSession actions = do
         hSetBuffering outRead NoBuffering
         hSetBuffering outWrite NoBuffering
         let logTrigger :: WithPriority Text -> IO ()
-            logTrigger _ = pure ()
+            logTrigger = atomically . writeTChan logChan
         let recorder :: Recorder (WithPriority Text)
             recorder = Recorder{logger_ = liftIO . logTrigger}
         forkIO $ ghcide recorder inRead outWrite
         pure (inWrite, outRead)
-    runSessionWithHandles serverOutput serverInput $ initialize >> actions
+    runSessionWithHandles serverOutput serverInput do
+        initialize $
+            Just
+                [aesonQQ| {
+                    "plugin": {
+                        "semanticTokens": {
+                            "globalOn": true
+                        }
+                    }
+                }
+                |]
+        actions
 
 -- TODO: can we get rid of handles altogether?
 ghcide :: Recorder (WithPriority Text) -> Handle -> Handle -> IO ()
@@ -39,10 +79,55 @@ ghcide recorder handleIn handleOut = defaultMain recorder' arguments
   where
     recorder' = cmapWithPrio (ishow . pretty) recorder
     plugins = idePlugins $ cmapWithPrio (ishow . pretty) recorder
+    severityToPriority :: Severity -> Priority
+    severityToPriority Colog.Core.Debug = Development.IDE.Debug
+    severityToPriority Colog.Core.Info = Development.IDE.Info
+    severityToPriority Colog.Core.Warning = Development.IDE.Warning
+    severityToPriority Colog.Core.Error = Development.IDE.Error
+    withCradleToHlsLog :: WithSeverity Cradle.Log -> WithSeverity HLS.Log
+    withCradleToHlsLog WithSeverity{..} = WithSeverity{getMsg = HLS.LogHieBios getMsg, ..}
+    withSeverityToWithPriority :: WithSeverity a -> WithPriority a
+    withSeverityToWithPriority WithSeverity{..} =
+        WithPriority
+            { priority = severityToPriority getSeverity
+            , payload = getMsg
+            , callStack_ = fromList []
+            }
+    rootFilePath :: FilePath
+    rootFilePath = "/tmp/dosh"
+    cradleAction :: b -> Cradle.CradleAction a
+    cradleAction _ =
+        Cradle.CradleAction
+            { runGhcCmd = undefined
+            , runCradle = \_ _ ->
+                pure . Cradle.CradleSuccess $
+                    Cradle.ComponentOptions
+                        { componentRoot = rootFilePath
+                        , componentOptions = ["-dynamic"]
+                        , componentDependencies = []
+                        }
+            , actionName = HIE.Bios.Types.Direct
+            }
+    cradle :: (Show a) => Recorder (WithPriority HLS.Log) -> IO (Cradle a)
+    cradle (cmap withSeverityToWithPriority -> cmap withCradleToHlsLog -> Recorder{..}) =
+        Cradle.getCradle
+            LogAction{unLogAction = logger_}
+            cradleAction
+            ( Cradle.CradleConfig
+                { cradleDependencies = []
+                , cradleTree = HIE.Bios.Config.Direct []
+                }
+            , rootFilePath
+            )
     arguments =
         (defaultArguments recorder' plugins)
             { argsHandleIn = pure handleIn
             , argsHandleOut = pure handleOut
+            , argsSessionLoadingOptions =
+                def
+                    { findCradle = const $ pure Nothing
+                    , loadCradle = \r _ _ -> cradle r
+                    }
             }
 
 createLoggedPipe :: FilePath -> IO (Handle, Handle)

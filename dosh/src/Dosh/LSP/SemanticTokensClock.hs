@@ -17,7 +17,7 @@ instance (MonadIO m) => Clock (SessionT m) SemanticTokensClock where
     initClock SemanticTokensClock = do
         resultIds <- newTVarIO HashMap.empty
         let clock = filterS . concatS $ arrM \() -> do
-                threadDelay 100_000
+                threadDelay 1_000_000
                 getAllVersionedDocs >>= mapM \LSP.VersionedTextDocumentIdentifier{..} -> do
                     let doc = LSP.TextDocumentIdentifier{..}
                         storeResultId t =

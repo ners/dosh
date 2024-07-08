@@ -1,5 +1,6 @@
 module Dosh.Widgets.CodeInput where
 
+import Data.Integral
 import Data.Interval qualified as Interval
 import Data.IntervalMap.Strict (IntervalMap)
 import Data.IntervalMap.Strict qualified as IntervalMap

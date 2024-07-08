@@ -1,27 +1,30 @@
 {-# LANGUAGE OverloadedLists #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+
+{-# HLINT ignore "Unused LANGUAGE pragma" #-}
 
 module Dosh.Program where
 
+import Data.Position qualified as Position
 import Data.Text qualified as Text
 import Data.Text.IO qualified as Text
-import Data.Text.Rope.Zipper qualified as RopeZipper
 import Data.Text.Utf16.Rope.Mixed qualified as MixedRope
 import Dosh.App
 import Dosh.LSP.DiagnosticsClock (DiagnosticsClock)
 import Dosh.LSP.SemanticTokensClock (SemanticTokensClock)
 import Dosh.LSP.Session (flowSession, runSession)
-import Dosh.Prelude hiding (try)
 import Dosh.Widgets.CodeInput
-import FRP.Rhine
 import FRP.Rhine.Terminal
     ( TerminalEventClock (TerminalEventClock)
     )
 import Language.LSP.Client.Session
     ( changeDoc
     , documentContents
+    , getAllVersionedDocs
     , liftSession
     , openDoc
     )
+import Language.LSP.Protocol.Lens qualified as LSP
 import Language.LSP.Protocol.Types qualified as LSP
 import Language.LSP.Protocol.Types.Extra (partialTextDocumentContentChangeEvent)
 import System.Terminal
@@ -30,7 +33,6 @@ import System.Terminal
     , withTerminal
     )
 import System.Terminal qualified as Terminal
-import System.Terminal.Widgets.Common (Widget)
 import System.Terminal.Widgets.Common qualified as Widget
 import System.Terminal.Widgets.TextInput
 import Prelude
@@ -42,30 +44,22 @@ data DoshState m = DoshState
     }
     deriving stock (Generic)
 
-widget
-    :: forall m w cl
-     . ( MonadIO m
-       , Tag cl ~ Tag TerminalEventClock
-       , Widget w
-       )
-    => w
-    -> ClSFExcept cl w w m (Either Interrupt w)
-widget initialW = try . feedback initialW $ proc (w, x) -> do
-    tag <- tagS -< ()
-    case tag of
-        Left Interrupt ->
-            throwS -< Left Interrupt
-        Right e
-            | Just e == Widget.submitEvent w ->
-                throwS -< Right w
-            | otherwise ->
-                returnA -< (Widget.handleEvent e w, x)
-
 handleDiagnostics :: (Monad m) => ClSF m DiagnosticsClock st st
 handleDiagnostics = returnA
 
-handleSemanticTokens :: (Monad m) => ClSF m SemanticTokensClock st st
-handleSemanticTokens = returnA
+handleSemanticTokens
+    :: (MonadIO m)
+    => (LSP.TextDocumentIdentifier, LSP.SemanticTokensDelta)
+    -> st
+    -> m st
+handleSemanticTokens (_, LSP.SemanticTokensDelta{_edits}) st = do
+    -- TODO parse semantic tokens
+    -- https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_semanticTokens
+    liftIO . Text.appendFile "semantic-tokens.txt" $ ishow _edits <> "\n\n"
+    pure st
+
+handleSemanticTokensS :: (MonadIO m) => ClSF m SemanticTokensClock st st
+handleSemanticTokensS = tagS &&& returnA >>> arrMCl (uncurry handleSemanticTokens)
 
 withClock
     :: ( cl ~ In cl
@@ -76,59 +70,87 @@ withClock
     -> Rhine m cl a b
 withClock = flip (@@)
 
-doshPosition :: DoshState m -> LSP.Position
-doshPosition = view ropeLspPosition . RopeZipper.cursor . (.input.input.value)
-
 documentChanges
-    :: (DoshState m, DoshState m)
+    :: (CodeInput m, CodeInput m)
     -> Terminal.Event
-    -> [LSP.TextDocumentContentChangeEvent]
-documentChanges (oldState, newState) (Terminal.KeyEvent Terminal.BackspaceKey []) =
-    [ partialTextDocumentContentChangeEvent
-        LSP.Range{_start = doshPosition newState, _end = doshPosition oldState}
-        Nothing
-        ""
-    ]
-documentChanges _ (Terminal.KeyEvent Terminal.DeleteKey []) = error "Not yet implemented"
-documentChanges (doshPosition -> oldPos, _) (Terminal.KeyEvent (Terminal.CharKey k) []) =
-    [ partialTextDocumentContentChangeEvent
-        LSP.Range{_start = oldPos, _end = oldPos}
-        Nothing
-        (Text.singleton k)
-    ]
-documentChanges (doshPosition -> oldPos, _) (Terminal.KeyEvent Terminal.EnterKey []) =
-    [ partialTextDocumentContentChangeEvent
-        LSP.Range{_start = oldPos, _end = oldPos}
-        Nothing
-        "\n"
-    ]
-documentChanges _ _ = []
+    -> Maybe LSP.TextDocumentContentChangeEvent
+documentChanges (oldInput, newInput) e =
+    case e of
+        Terminal.KeyEvent Terminal.BackspaceKey [] ->
+            Just $
+                partialTextDocumentContentChangeEvent
+                    LSP.Range{_start = newPos, _end = oldPos}
+                    Nothing
+                    ""
+        Terminal.KeyEvent Terminal.DeleteKey [] ->
+            Just $
+                partialTextDocumentContentChangeEvent
+                    LSP.Range
+                        { _start = oldPos
+                        , _end =
+                            let
+                                oldLines = Widget.lineCount oldInput
+                                newLines = Widget.lineCount newInput
+                                deltaLines = oldLines - newLines
+                             in
+                                newPos
+                                    & if deltaLines == 0
+                                        then Position.col +~ 1
+                                        else Position.row +~ deltaLines >>> Position.col .~ 0
+                        }
+                    Nothing
+                    ""
+        Terminal.KeyEvent (Terminal.CharKey k) [] ->
+            Just $
+                partialTextDocumentContentChangeEvent
+                    LSP.Range{_start = oldPos, _end = oldPos}
+                    Nothing
+                    (Text.singleton k)
+        Terminal.KeyEvent Terminal.EnterKey [] ->
+            Just $
+                partialTextDocumentContentChangeEvent
+                    LSP.Range{_start = oldPos, _end = oldPos}
+                    Nothing
+                    "\n"
+        _ -> Nothing
+  where
+    pos :: CodeInput m -> LSP.Position
+    pos = view $ #input . #value . #cursor . position
+    oldPos = pos oldInput
+    newPos = pos newInput
+
+handleEvents'
+    :: Tag TerminalEventClock
+    -> DoshState t
+    -> AppExcept (DoshState t)
+handleEvents' (Left Interrupt) _ = throwE Interrupt
+handleEvents' (Right e) st
+    | e == Terminal.KeyEvent (Terminal.CharKey 'D') Terminal.ctrlKey =
+        throwE Interrupt
+    | Just e == Widget.submitEvent st.input =
+        pure $ st & #active .~ False
+    | otherwise = do
+        let newState = st & #input %~ Widget.handleEvent e
+        mapM_
+            (changeDoc st.documentIdentifier . pure)
+            (documentChanges (st.input, newState.input) e)
+        pure newState
 
 handleEvents :: Rhine AppExcept TerminalEventClock (DoshState t') (DoshState t')
-handleEvents = withClock TerminalEventClock $ proc st -> do
-    tag <- tagS -< ()
-    case tag of
-        Left Interrupt ->
-            throwS -< Interrupt
-        Right e
-            | Terminal.KeyEvent (Terminal.CharKey 'D') Terminal.ctrlKey == e ->
-                throwS -< Interrupt
-            | Just e == Widget.submitEvent st.input ->
-                returnA -< st & #active .~ False
-            | otherwise -> do
-                let newState = st & #input %~ Widget.handleEvent e
-                arrMCl (uncurry changeDoc)
-                    -<
-                        (st.documentIdentifier, documentChanges (st, newState) e)
-                returnA -< newState
+handleEvents =
+    withClock TerminalEventClock $
+        tagS &&& returnA >>> arrMCl (uncurry handleEvents')
 
-debugRh
+writeDocumentContents
     :: Rhine AppExcept (HoistClock IO AppExcept (Millisecond 1000)) (DoshState t') ()
-debugRh = withClock (ioClock waitClock) $ proc st -> do
-    contents <- arrMCl documentContents -< st.documentIdentifier
-    arrMCl (liftIO . Text.writeFile "lsp-contents.txt")
-        -<
-            MixedRope.toText $ fromMaybe "" contents
+writeDocumentContents = withClock (ioClock waitClock) $ arrMCl \_ -> do
+    docs <- getAllVersionedDocs
+    contents <- forM docs \versionedDocId -> do
+        let docId = LSP.TextDocumentIdentifier $ versionedDocId ^. LSP.uri
+        contents <- documentContents docId
+        pure $
+            Text.unlines [ishow versionedDocId, MixedRope.toText . fromMaybe "" $ contents]
+    liftIO . Text.writeFile "lsp-contents.txt" . Text.unlines $ contents
 
 render
     :: Rhine AppExcept (HoistClock IO AppExcept (Millisecond 16)) (DoshState t) ()
@@ -140,14 +162,14 @@ render = withClock (ioClock waitClock) . feedback Nothing $ proc (new, old) -> d
 runDosh :: IO ()
 runDosh =
     void . runSession . withTerminal . runTerminalT . (.unApp) $ do
-        uri <- liftSession $ openDoc "Foobar.hs" "haskell"
+        uri <- liftSession $ openDoc "/tmp/dosh/Foobar.hs" "haskell"
         flowSession
             (initialState uri)
             handleDiagnostics
-            handleSemanticTokens
+            handleSemanticTokensS
             liftSession
             handleEvents
-            (debugRh |@| render)
+            (writeDocumentContents |@| render)
   where
     initialState :: LSP.TextDocumentIdentifier -> DoshState m
     initialState documentIdentifier =

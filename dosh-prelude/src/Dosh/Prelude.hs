@@ -40,7 +40,7 @@ import Data.Char
 import Data.Coerce (coerce)
 import Data.Foldable
 import Data.Functor
-import Data.Generics.Labels
+import Data.Generics.Labels ()
 import Data.Generics.Product
 import Data.Maybe
 import Data.Ord
