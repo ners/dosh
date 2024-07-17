@@ -11,7 +11,6 @@ module Dosh.Prelude
     , module Data.Coerce
     , module Data.Foldable
     , module Data.Functor
-    , module Data.Generics.Labels
     , module Data.Generics.Product
     , module Data.Maybe
     , module Data.Ord

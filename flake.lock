@@ -24,11 +24,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1720970478,
-        "narHash": "sha256-nsr8ZeOoH5S8ko3z87+06cuUvHmg1mhqv4AM8gf+h0E=",
+        "lastModified": 1721166976,
+        "narHash": "sha256-b1zK2OUSNbwPTKbSMzvwjvj4pgPDpkrys1YGIQfECso=",
         "owner": "ners",
         "repo": "lsp-client",
-        "rev": "17047cc018024dcc567ac6b1681f7dbb926553b7",
+        "rev": "e23206aa1865f9ccaa23ee5cac6733aebe784ccc",
         "type": "github"
       },
       "original": {
@@ -39,11 +39,11 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1720768451,
-        "narHash": "sha256-EYekUHJE2gxeo2pM/zM9Wlqw1Uw2XTJXOSAO79ksc4Y=",
+        "lastModified": 1721138476,
+        "narHash": "sha256-+W5eZOhhemLQxelojLxETfbFbc19NWawsXBlapYpqIA=",
         "owner": "nixos",
         "repo": "nixpkgs",
-        "rev": "7e7c39ea35c5cdd002cd4588b03a3fb9ece6fad9",
+        "rev": "ad0b5eed1b6031efaed382844806550c3dcb4206",
         "type": "github"
       },
       "original": {
@@ -60,16 +60,15 @@
         ]
       },
       "locked": {
-        "lastModified": 1720947616,
-        "narHash": "sha256-797Th3cU6ggeECDEWb+Assvbn/uTc1MUmEd6Ac9DF24=",
-        "owner": "ners",
+        "lastModified": 1721118334,
+        "narHash": "sha256-edYMC1S3C8nuJC6gzwr69qKl4OXHaAudYfLchiEIWdE=",
+        "owner": "turion",
         "repo": "rhine",
-        "rev": "9ea3c6bd1ce7b1072277f38052b0b4e9f0218bad",
+        "rev": "61c950aaf75f0666af9a9ab52f2f7b626378d3c5",
         "type": "github"
       },
       "original": {
-        "owner": "ners",
-        "ref": "flake",
+        "owner": "turion",
         "repo": "rhine",
         "type": "github"
       }

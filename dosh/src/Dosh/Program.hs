@@ -26,7 +26,6 @@ import Language.LSP.Client.Session
     )
 import Language.LSP.Protocol.Lens qualified as LSP
 import Language.LSP.Protocol.Types qualified as LSP
-import Language.LSP.Protocol.Types.Extra (partialTextDocumentContentChangeEvent)
 import System.Terminal
     ( Interrupt (Interrupt)
     , runTerminalT
@@ -77,41 +76,46 @@ documentChanges
 documentChanges (oldInput, newInput) e =
     case e of
         Terminal.KeyEvent Terminal.BackspaceKey [] ->
-            Just $
-                partialTextDocumentContentChangeEvent
-                    LSP.Range{_start = newPos, _end = oldPos}
-                    Nothing
-                    ""
+            Just . LSP.TextDocumentContentChangeEvent . LSP.InL $
+                LSP.TextDocumentContentChangePartial
+                    { _rangeLength = Nothing
+                    , _text = ""
+                    , _range = LSP.Range{_start = newPos, _end = oldPos}
+                    }
         Terminal.KeyEvent Terminal.DeleteKey [] ->
-            Just $
-                partialTextDocumentContentChangeEvent
-                    LSP.Range
-                        { _start = oldPos
-                        , _end =
-                            let
-                                oldLines = Widget.lineCount oldInput
-                                newLines = Widget.lineCount newInput
-                                deltaLines = oldLines - newLines
-                             in
-                                newPos
-                                    & if deltaLines == 0
-                                        then Position.col +~ 1
-                                        else Position.row +~ deltaLines >>> Position.col .~ 0
-                        }
-                    Nothing
-                    ""
+            Just . LSP.TextDocumentContentChangeEvent . LSP.InL $
+                LSP.TextDocumentContentChangePartial
+                    { _rangeLength = Nothing
+                    , _text = ""
+                    , _range =
+                        LSP.Range
+                            { _start = oldPos
+                            , _end =
+                                let
+                                    oldLines = Widget.lineCount oldInput
+                                    newLines = Widget.lineCount newInput
+                                    deltaLines = oldLines - newLines
+                                 in
+                                    newPos
+                                        & if deltaLines == 0
+                                            then Position.col +~ 1
+                                            else Position.row +~ deltaLines >>> Position.col .~ 0
+                            }
+                    }
         Terminal.KeyEvent (Terminal.CharKey k) [] ->
-            Just $
-                partialTextDocumentContentChangeEvent
-                    LSP.Range{_start = oldPos, _end = oldPos}
-                    Nothing
-                    (Text.singleton k)
+            Just . LSP.TextDocumentContentChangeEvent . LSP.InL $
+                LSP.TextDocumentContentChangePartial
+                    { _rangeLength = Nothing
+                    , _text = Text.singleton k
+                    , _range = LSP.Range{_start = oldPos, _end = oldPos}
+                    }
         Terminal.KeyEvent Terminal.EnterKey [] ->
-            Just $
-                partialTextDocumentContentChangeEvent
-                    LSP.Range{_start = oldPos, _end = oldPos}
-                    Nothing
-                    "\n"
+            Just . LSP.TextDocumentContentChangeEvent . LSP.InL $
+                LSP.TextDocumentContentChangePartial
+                    { _rangeLength = Nothing
+                    , _text = "\n"
+                    , _range = LSP.Range{_start = oldPos, _end = oldPos}
+                    }
         _ -> Nothing
   where
     pos :: CodeInput m -> LSP.Position

@@ -120,7 +120,7 @@ ghcide recorder handleIn handleOut = defaultMain recorder' arguments
             , rootFilePath
             )
     arguments =
-        (defaultArguments recorder' plugins)
+        (defaultArguments recorder' rootFilePath plugins)
             { argsHandleIn = pure handleIn
             , argsHandleOut = pure handleOut
             , argsSessionLoadingOptions =

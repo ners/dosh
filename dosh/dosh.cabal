@@ -59,7 +59,6 @@ library
     other-modules:
         Data.Position,
         Data.Integral,
-        Language.LSP.Protocol.Types.Extra,
         Prelude,
         System.Terminal.Extra,
     build-depends:
