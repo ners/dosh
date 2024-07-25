@@ -25,6 +25,8 @@ import Data.Text.Rope (Rope)
 import Data.Text.Rope qualified as Rope
 import Dosh.Prelude hiding (position, try)
 import FRP.Rhine hiding (integral, mapMaybe, newChan, try)
+import Language.LSP.Protocol.Lens qualified as LSP
+import Language.LSP.Protocol.Types qualified as LSP
 import Prettyprinter (Doc, Pretty (pretty), annotate, pretty)
 import System.IO.Unsafe (unsafePerformIO)
 
@@ -62,14 +64,17 @@ mapInterval f i =
         (first (fmap f) $ Interval.upperBound' i)
 
 {-# NOINLINE dirtyLogger #-}
-dirtyLogger :: TQueue String
+dirtyLogger :: TQueue (FilePath, String)
 dirtyLogger = unsafePerformIO do
     q <- newTQueueIO
-    forkIO . forever $ atomically (readTQueue q) >>= appendFile "log.txt"
+    forkIO . forever $ atomically (readTQueue q) >>= uncurry appendFile
     pure q
 
-dirtyLog :: String -> a -> a
-dirtyLog = seq . unsafePerformIO . atomically . writeTQueue dirtyLogger . (<> "\n")
+dirtyTrace :: FilePath -> String -> a -> a
+dirtyTrace f l = seq . unsafePerformIO . atomically . writeTQueue dirtyLogger $ (f, l <> "\n")
+
+dirtyTraceM :: (Monad m) => FilePath -> String -> m ()
+dirtyTraceM f l = dirtyTrace f l $ pure ()
 
 instance Pretty Rope where
     pretty = pretty . Rope.toText
@@ -77,3 +82,15 @@ instance Pretty Rope where
 ropeLines :: Rope -> [Rope]
 ropeLines "" = [""]
 ropeLines (Rope.splitAtLine 1 -> (a, b)) = a : ropeLines b
+
+unversionedDoc
+    :: Lens' LSP.VersionedTextDocumentIdentifier LSP.TextDocumentIdentifier
+unversionedDoc = lens getter (flip setter)
+  where
+    getter :: LSP.VersionedTextDocumentIdentifier -> LSP.TextDocumentIdentifier
+    getter LSP.VersionedTextDocumentIdentifier{..} = LSP.TextDocumentIdentifier{..}
+    setter
+        :: LSP.TextDocumentIdentifier
+        -> LSP.VersionedTextDocumentIdentifier
+        -> LSP.VersionedTextDocumentIdentifier
+    setter LSP.TextDocumentIdentifier{..} = LSP.uri .~ _uri

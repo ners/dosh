@@ -1,17 +1,26 @@
 {-# LANGUAGE OverloadedLists #-}
+{-# LANGUAGE QuasiQuotes #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
-
-{-# HLINT ignore "Unused LANGUAGE pragma" #-}
 
 module Dosh.Program where
 
+import Data.Aeson.QQ.Simple
+import Data.Bits (Bits (testBit))
+import Data.ExtendedReal qualified as Extended
+import Data.HashMap.Strict (HashMap)
+import Data.HashMap.Strict qualified as HashMap
+import Data.Interval ((<=..<))
+import Data.IntervalMap.Strict qualified as IntervalMap
+import Data.List.Extra ((!?))
 import Data.Position qualified as Position
+import Data.Sequence (Seq)
+import Data.Sequence qualified as Seq
 import Data.Text qualified as Text
 import Data.Text.IO qualified as Text
 import Data.Text.Utf16.Rope.Mixed qualified as MixedRope
 import Dosh.App
 import Dosh.LSP.DiagnosticsClock (DiagnosticsClock)
-import Dosh.LSP.SemanticTokensClock (SemanticTokensClock)
+import Dosh.LSP.SemanticTokensClock (SemanticTokens, SemanticTokensClock)
 import Dosh.LSP.Session (flowSession, runSession)
 import Dosh.Widgets.CodeInput
 import FRP.Rhine.Terminal
@@ -21,6 +30,7 @@ import Language.LSP.Client.Session
     ( changeDoc
     , documentContents
     , getAllVersionedDocs
+    , initialize
     , liftSession
     , openDoc
     )
@@ -37,7 +47,8 @@ import System.Terminal.Widgets.TextInput
 import Prelude
 
 data DoshState m = DoshState
-    { input :: CodeInput (Attribute m)
+    { initializeResult :: LSP.InitializeResult
+    , input :: CodeInput (Attribute m)
     , active :: Bool
     , documentIdentifier :: LSP.TextDocumentIdentifier
     }
@@ -46,19 +57,87 @@ data DoshState m = DoshState
 handleDiagnostics :: (Monad m) => ClSF m DiagnosticsClock st st
 handleDiagnostics = returnA
 
-handleSemanticTokens
-    :: (MonadIO m)
-    => (LSP.TextDocumentIdentifier, LSP.SemanticTokensDelta)
-    -> st
-    -> m st
-handleSemanticTokens (_, LSP.SemanticTokensDelta{_edits}) st = do
-    -- TODO parse semantic tokens
-    -- https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_semanticTokens
-    liftIO . Text.appendFile "semantic-tokens.txt" $ ishow _edits <> "\n\n"
-    pure st
+type SemanticTokensDocState = Seq LSP.UInt
 
-handleSemanticTokensS :: (MonadIO m) => ClSF m SemanticTokensClock st st
-handleSemanticTokensS = tagS &&& returnA >>> arrMCl (uncurry handleSemanticTokens)
+type SemanticTokensState =
+    HashMap LSP.TextDocumentIdentifier SemanticTokensDocState
+
+applySemanticTokensEdits
+    :: [LSP.SemanticTokensEdit]
+    -> SemanticTokensDocState
+    -> SemanticTokensDocState
+applySemanticTokensEdits = flip . foldr $ \LSP.SemanticTokensEdit{..} stds ->
+    let (before, after) =
+            stds
+                & Seq.splitAt (fromIntegral _start)
+                & second (Seq.drop $ fromIntegral _deleteCount)
+        middle = Seq.fromList $ fromMaybe [] _data_
+     in before <> middle <> after
+
+handleSemanticTokens
+    :: (Monad m)
+    => ( ((LSP.VersionedTextDocumentIdentifier, SemanticTokens), DoshState ann)
+       , SemanticTokensState
+       )
+    -> m (DoshState ann, SemanticTokensState)
+handleSemanticTokens (((doc, tokens), st), sts) = pure (st', sts')
+  where
+    applyTokens =
+        case tokens of
+            LSP.InL fullTokens -> const . Seq.fromList $ fullTokens._data_
+            LSP.InR tokensDelta -> applySemanticTokensEdits tokensDelta._edits
+    sts' =
+        HashMap.alter
+            (Just . applyTokens . fromMaybe [])
+            (doc ^. unversionedDoc)
+            sts
+    legend =
+        st.initializeResult
+            ^? LSP.capabilities
+            . LSP.semanticTokensProvider
+            . _Just
+            . LSP._L
+            . LSP.legend
+    uintToTokenTypes :: LSP.UInt -> Maybe LSP.SemanticTokenTypes
+    uintToTokenTypes n = do
+        tys <- view LSP.tokenTypes <$> legend
+        LSP.fromOpenEnumBaseType <$> tys !? fromIntegral n
+    uintToTokenModifiers :: LSP.UInt -> [LSP.SemanticTokenModifiers]
+    uintToTokenModifiers n =
+        case view LSP.tokenModifiers <$> legend of
+            Just (fmap LSP.fromOpenEnumBaseType -> modifiers) ->
+                snd
+                    <$> filter (\(b, _) -> fromIntegral @_ @Int n `testBit` b) (zip [0 ..] modifiers)
+            _ -> []
+    parseRel :: Seq LSP.UInt -> LSP.SemanticTokenRelative
+    parseRel
+        [ _deltaLine
+            , _deltaStartChar
+            , _length
+            , uintToTokenTypes -> fromMaybe (LSP.SemanticTokenTypes_Custom "") -> _tokenType
+            , uintToTokenModifiers -> _tokenModifiers
+            ] = LSP.SemanticTokenRelative{..}
+    parseRel _ = error "wat"
+    rels = parseRel <$> Seq.chunksOf 5 (sts' HashMap.! (doc ^. unversionedDoc))
+    abss = LSP.absolutizeTokens . toList $ rels
+    start :: Lens' LSP.SemanticTokenAbsolute LSP.Position
+    start =
+        lens
+            (\LSP.SemanticTokenAbsolute{..} -> LSP.Position{_line, _character = _startChar})
+            (\t LSP.Position{..} -> t & LSP.line .~ _line & LSP.startChar .~ _character)
+    interval t =
+        Extended.Finite (t ^. start)
+            <=..< Extended.Finite (t ^. start & LSP.character +~ t._length)
+    st' =
+        st
+            & #input
+            . #tokens
+            .~ IntervalMap.fromList [(interval t, t._tokenType) | t <- abss]
+
+handleSemanticTokensS
+    :: (MonadIO m)
+    => ClSF m SemanticTokensClock (DoshState ann) (DoshState ann)
+handleSemanticTokensS = tagS &&& returnA >>> feedback HashMap.empty (arrMCl handleSemanticTokens)
 
 withClock
     :: ( cl ~ In cl
@@ -166,19 +245,32 @@ render = withClock (ioClock waitClock) . feedback Nothing $ proc (new, old) -> d
 runDosh :: IO ()
 runDosh =
     void . runSession . withTerminal . runTerminalT . (.unApp) $ do
+        initializeResult <- liftSession $ initialize (Just initializeOptions)
         uri <- liftSession $ openDoc "/tmp/dosh/Foobar.hs" "haskell"
         flowSession
-            (initialState uri)
+            (initialState initializeResult uri)
             handleDiagnostics
             handleSemanticTokensS
             liftSession
             handleEvents
             (writeDocumentContents |@| render)
   where
-    initialState :: LSP.TextDocumentIdentifier -> DoshState m
-    initialState documentIdentifier =
+    initializeOptions =
+        [aesonQQ|
+        {
+            "plugin": {
+                "semanticTokens": {
+                    "globalOn": true
+                }
+            }
+        }
+        |]
+    initialState
+        :: LSP.InitializeResult -> LSP.TextDocumentIdentifier -> DoshState m
+    initialState initializeResult documentIdentifier =
         DoshState
-            { input =
+            { initializeResult
+            , input =
                 CodeInput
                     { input =
                         TextInput

@@ -64,12 +64,19 @@ lspRopePos = iso sa bt
         LSP.Position{_line = fromIntegral posLine, _character = fromIntegral posColumn}
 
 tokenToDoc
-    :: (MonadColorPrinter m)
+    :: forall m
+     . (MonadColorPrinter m)
     => LSP.SemanticTokenTypes
     -> Doc (Attribute m)
     -> Doc (Attribute m)
-tokenToDoc LSP.SemanticTokenTypes_Type = annotate $ foreground red
-tokenToDoc _ = id
+tokenToDoc t =
+    maybe id (annotate . foreground . snd) . find ((t ==) . fst) $
+        zip knownTypes colours
+  where
+    knownTypes :: [LSP.SemanticTokenTypes]
+    knownTypes = toList LSP.knownValues
+    colours :: [Color m]
+    colours = cycle [red, green, yellow, blue, magenta, cyan]
 
 relativePos :: Rope.Position -> Iso' Rope.Position Rope.Position
 relativePos a = iso sa bt

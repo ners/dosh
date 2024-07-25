@@ -1,10 +1,7 @@
-{-# LANGUAGE QuasiQuotes #-}
-
 module Dosh.LSP.Session where
 
 import Colog.Core (LogAction (..), Severity (..), WithSeverity (..))
 import Control.Monad.Schedule.Class (MonadSchedule)
-import Data.Aeson.QQ.Simple
 import Data.Automaton.Trans.Except (reactimateExcept, try)
 import Data.ByteString (hGetSome, hPut)
 import Data.ByteString qualified as ByteString
@@ -35,7 +32,7 @@ import HIE.Bios.Types qualified
 import HIE.Bios.Types qualified as Cradle
 import HlsPlugins (idePlugins)
 import Language.LSP.Client (runSessionWithHandles)
-import Language.LSP.Client.Session (SessionT, initialize)
+import Language.LSP.Client.Session (SessionT)
 import System.Process.Extra (createPipe)
 import Prelude
 
@@ -60,18 +57,7 @@ runSession actions = do
             recorder = Recorder{logger_ = liftIO . logTrigger}
         forkIO $ ghcide recorder inRead outWrite
         pure (inWrite, outRead)
-    runSessionWithHandles serverOutput serverInput do
-        initialize $
-            Just
-                [aesonQQ| {
-                    "plugin": {
-                        "semanticTokens": {
-                            "globalOn": true
-                        }
-                    }
-                }
-                |]
-        actions
+    runSessionWithHandles serverOutput serverInput actions
 
 -- TODO: can we get rid of handles altogether?
 ghcide :: Recorder (WithPriority Text) -> Handle -> Handle -> IO ()
