@@ -61,6 +61,8 @@ instance (MonadColorPrinter m) => MonadColorPrinter (ExceptT e m) where
 
 deriving stock instance (Eq (Attribute m)) => Eq (Attribute (ExceptT e m))
 
+deriving stock instance (Show (Attribute m)) => Show (Attribute (ExceptT e m))
+
 instance (MonadMarkupPrinter m) => MonadMarkupPrinter (ExceptT e m) where
     data Attribute (ExceptT e m) = AttributeT (Attribute m)
     setAttribute (AttributeT a) = lift (setAttribute a)

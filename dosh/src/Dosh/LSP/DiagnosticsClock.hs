@@ -10,14 +10,20 @@ data DiagnosticsClock = DiagnosticsClock
 
 instance (MonadIO m) => Clock (SessionT m) DiagnosticsClock where
     type Time DiagnosticsClock = UTCTime
-    type Tag DiagnosticsClock = (LSP.TextDocumentIdentifier, [LSP.Diagnostic])
+    type
+        Tag DiagnosticsClock =
+            (LSP.VersionedTextDocumentIdentifier, [LSP.Diagnostic])
     initClock DiagnosticsClock = do
         diagnostics <- newTQueueIO
         receiveNotification LSP.SMethod_TextDocumentPublishDiagnostics \msg ->
             let diags = msg ^. LSP.params . LSP.diagnostics
-                doc = LSP.TextDocumentIdentifier{_uri = msg ^. LSP.params . LSP.uri}
+                doc =
+                    LSP.VersionedTextDocumentIdentifier
+                        { _uri = msg ^. LSP.params . LSP.uri
+                        , _version = fromMaybe 0 $ msg ^. LSP.params . LSP.version
+                        }
              in atomically . writeTQueue diagnostics $ (doc, diags)
-        let clock = arrM \() -> do
+        let clock = constM do
                 d <- atomically $ readTQueue diagnostics
                 t <- liftIO getCurrentTime
                 pure (t, d)

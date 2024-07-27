@@ -69,7 +69,7 @@ instance
     data Attribute (AppT t m)
         = AttributeT
             (Attribute (TerminalT t (SessionT m)))
-        deriving stock (Eq)
+        deriving stock (Eq, Show)
     setAttribute (AttributeT a) = App (setAttribute a)
     resetAttribute (AttributeT a) = App (resetAttribute a)
     resetAttributes = App resetAttributes

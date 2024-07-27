@@ -97,7 +97,7 @@
             foreach (hpsFor pkgs) (ghcName: hp: {
               ${ghcName} = hp.shellFor {
                 packages = ps: map (pname: ps.${pname}) pnames;
-                nativeBuildInputs = with pkgs'.haskellPackages; [
+                nativeBuildInputs = with pkgs.haskellPackages; [
                   cabal-install
                   fourmolu
                   haskell-language-server

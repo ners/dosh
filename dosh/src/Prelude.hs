@@ -11,6 +11,7 @@ module Prelude
     , module Dosh.Prelude
     , module FRP.Rhine
     , module Prettyprinter
+    , module System.Terminal
     )
 where
 
@@ -21,6 +22,7 @@ import Data.Integral
 import Data.Interval (Interval)
 import Data.Interval qualified as Interval
 import Data.Position (Position, position)
+import Data.Text qualified as Text
 import Data.Text.Rope (Rope)
 import Data.Text.Rope qualified as Rope
 import Dosh.Prelude hiding (position, try)
@@ -29,6 +31,11 @@ import Language.LSP.Protocol.Lens qualified as LSP
 import Language.LSP.Protocol.Types qualified as LSP
 import Prettyprinter (Doc, Pretty (pretty), annotate, pretty)
 import System.IO.Unsafe (unsafePerformIO)
+import System.Terminal
+    ( MonadColorPrinter (..)
+    , MonadMarkupPrinter (..)
+    , MonadTerminal
+    )
 
 infixl 4 <$$>
 
@@ -44,7 +51,7 @@ ishow :: (Show a, IsString s) => a -> s
 ishow = fromString . show
 
 fromText :: (IsString s) => Text -> s
-fromText = fromString . fromText
+fromText = fromString . Text.unpack
 
 ropeText :: Iso' Rope Text
 ropeText = iso Rope.toText Rope.fromText
@@ -70,9 +77,11 @@ dirtyLogger = unsafePerformIO do
     forkIO . forever $ atomically (readTQueue q) >>= uncurry appendFile
     pure q
 
+{-# NOINLINE dirtyTrace #-}
 dirtyTrace :: FilePath -> String -> a -> a
 dirtyTrace f l = seq . unsafePerformIO . atomically . writeTQueue dirtyLogger $ (f, l <> "\n")
 
+{-# NOINLINE dirtyTraceM #-}
 dirtyTraceM :: (Monad m) => FilePath -> String -> m ()
 dirtyTraceM f l = dirtyTrace f l $ pure ()
 
@@ -94,3 +103,6 @@ unversionedDoc = lens getter (flip setter)
         -> LSP.VersionedTextDocumentIdentifier
         -> LSP.VersionedTextDocumentIdentifier
     setter LSP.TextDocumentIdentifier{..} = LSP.uri .~ _uri
+
+maybeWith :: (c -> b) -> (c -> a -> b) -> c -> Maybe a -> b
+maybeWith f1 f2 c = maybe (f1 c) (f2 c)

@@ -17,31 +17,40 @@ instance (MonadIO m) => Clock (SessionT m) SemanticTokensClock where
     type Time SemanticTokensClock = UTCTime
     type
         Tag SemanticTokensClock =
-            (LSP.VersionedTextDocumentIdentifier, SemanticTokens)
+            ( LSP.VersionedTextDocumentIdentifier
+            , SemanticTokens
+            )
     initClock SemanticTokensClock = do
         resultIds <- newTVarIO $ HashMap.empty @LSP.TextDocumentIdentifier
-        let clock = filterS . concatS . constM $ do
+        let requestTokens
+                :: LSP.VersionedTextDocumentIdentifier
+                -> Maybe Text
+                -> SessionT m (Maybe SemanticTokens)
+            requestTokens = maybeWith requestFullTokens requestTokensDelta
+            maybeEmitTokens
+                :: LSP.VersionedTextDocumentIdentifier
+                -> SemanticTokens
+                -> SessionT m (Maybe (Time SemanticTokensClock, Tag SemanticTokensClock))
+            maybeEmitTokens _ (LSP.InR (LSP.SemanticTokensDelta{_edits = []})) = pure Nothing
+            maybeEmitTokens doc tokens = do
+                time <- liftIO getCurrentTime
+                pure $ Just (time, (doc, tokens))
+            updateMap doc tokens =
+                atomically
+                    . modifyTVar resultIds
+                    . maybeWith
+                        HashMap.delete
+                        HashMap.insert
+                        (doc ^. unversionedDoc)
+                    $ tokens ^. LSP.resultId
+            clock = filterS . concatS . constM $ do
                 threadDelay 1_000_000
-                getAllVersionedDocs >>= mapM \doc -> do
-                    let storeResultId t =
-                            atomically . modifyTVar resultIds $
-                                case t ^. LSP.resultId of
-                                    Nothing -> HashMap.delete (doc ^. unversionedDoc)
-                                    Just resultId -> HashMap.insert (doc ^. unversionedDoc) resultId
+                getAllVersionedDocs >>= mapM \doc ->
                     readTVarIO resultIds
-                        >>= ( HashMap.lookup (doc ^. unversionedDoc) >>> \case
-                                Nothing -> requestFullTokens doc
-                                Just resultId -> requestTokensDelta doc resultId
-                            )
-                        >>= \case
-                            Nothing -> pure Nothing
-                            Just tokens -> do
-                                storeResultId tokens
-                                case tokens of
-                                    LSP.InR (LSP.SemanticTokensDelta{_edits = []}) -> pure Nothing
-                                    _ -> do
-                                        time <- liftIO getCurrentTime
-                                        pure $ Just (time, (doc, tokens))
+                        >>= requestTokens doc . HashMap.lookup (doc ^. unversionedDoc)
+                        >>= maybe (pure Nothing) \tokens -> do
+                            updateMap doc tokens
+                            maybeEmitTokens doc tokens
         (clock,) <$> liftIO getCurrentTime
 
 instance LSP.HasResultId SemanticTokens (Maybe Text) where
