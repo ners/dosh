@@ -26,7 +26,7 @@ import Data.Text qualified as Text
 import Data.Text.Rope (Rope)
 import Data.Text.Rope qualified as Rope
 import Dosh.Prelude hiding (position, try)
-import FRP.Rhine hiding (integral, mapMaybe, newChan, try)
+import FRP.Rhine hiding (forever, integral, mapMaybe, newChan, try)
 import Language.LSP.Protocol.Lens qualified as LSP
 import Language.LSP.Protocol.Types qualified as LSP
 import Prettyprinter (Doc, Pretty (pretty), annotate, pretty)

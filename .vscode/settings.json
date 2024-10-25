@@ -1,7 +1,0 @@
-{
-  "editor.formatOnSave": true,
-  "haskell.formattingProvider": "fourmolu",
-  "haskell.manageHLS": "PATH",
-  "nixEnvSelector.nixFile": "${workspaceRoot}/shell.nix",
-  "cSpell.language": "en-GB"
-}

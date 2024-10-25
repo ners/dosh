@@ -51,7 +51,6 @@ import Prelude
 data DoshState = DoshState
     { initializeResult :: LSP.InitializeResult
     , input :: CodeInput
-    , active :: Bool
     , documentIdentifier :: LSP.TextDocumentIdentifier
     }
     deriving stock (Generic)
@@ -167,7 +166,10 @@ handleSemanticTokensS = feedback HashMap.empty $ proc st -> do
     returnA -< handleSemanticTokens time tag st
 
 withClock
-    :: ( cl ~ In cl
+    :: ( Monad m
+       , Clock m cl
+       , GetClockProxy cl
+       , cl ~ In cl
        , cl ~ Out cl
        )
     => cl
@@ -238,8 +240,24 @@ handleTerminalEvents _ (Left Interrupt) _ = throwE Interrupt
 handleTerminalEvents time (Right e) st
     | e == Terminal.KeyEvent (Terminal.CharKey 'D') Terminal.ctrlKey =
         throwE Interrupt
-    | Just e == Widget.submitEvent st.input =
-        pure $ st & #active .~ False
+    | Just e == Widget.submitEvent st.input = do
+        let dy = Widget.lineCount st.input - (st.input ^. Widget.cursor . Position.row) - 1
+        when (dy > 0) $ Terminal.moveCursorDown dy
+        Terminal.putLn
+        pure $
+            st
+                & #input
+                . withLastChange time
+                %~ ( #value
+                        .~ mempty
+                        >>> #cursor
+                        . position
+                        .~ (0 :: Int, 0 :: Int)
+                        >>> #tokens
+                        .~ mempty
+                        >>> #diagnostics
+                        .~ mempty
+                   )
     | otherwise = do
         let newState = st & #input . withLastChange time %~ Widget.handleEvent e
         mapM_
@@ -319,6 +337,5 @@ runDosh =
                         , diagnostics = mempty
                         , lastChange = currentTime
                         }
-                , active = True
                 , documentIdentifier
                 }

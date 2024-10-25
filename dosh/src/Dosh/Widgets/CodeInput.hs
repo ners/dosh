@@ -18,6 +18,9 @@ import System.Terminal qualified as Terminal
 import System.Terminal.Widgets.Common
 import System.Terminal.Widgets.TextInput
 import Prelude
+import Data.Generics.Product qualified as Lens
+import Data.Text.Rope.Zipper (RopeZipper)
+import System.Terminal.Widgets.Common qualified as Widget
 
 data CodeInput = CodeInput
     { input :: TextInput
@@ -26,6 +29,12 @@ data CodeInput = CodeInput
     , lastChange :: UTCTime
     }
     deriving stock (Generic)
+
+instance {-# OVERLAPPING #-} Lens.HasField "value" CodeInput CodeInput RopeZipper RopeZipper where
+    field = #input . #value
+
+instance {-# OVERLAPPING #-} Lens.HasField "cursor" CodeInput CodeInput Terminal.Position Terminal.Position where
+    field = #input . Widget.cursor
 
 withLastChange :: UTCTime -> Lens' CodeInput CodeInput
 withLastChange time = lens id $ const $ #lastChange .~ time

@@ -24,11 +24,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1721943928,
-        "narHash": "sha256-t0jP2tQyHWFGN5dDdBKhkRyn4EsFk0OxtGc8u0Dd7ng=",
+        "lastModified": 1733862950,
+        "narHash": "sha256-N5Ligp6yy3o629u1/7ZBZ+1IiQZiVNgrM/L0pXzKbLE=",
         "owner": "ners",
         "repo": "lsp-client",
-        "rev": "b38cf200be4b58cfd80a8c433f10b08b62eeb04c",
+        "rev": "bdaa67fe88e1b5717e338e265ff941455562fe10",
         "type": "github"
       },
       "original": {
@@ -37,13 +37,34 @@
         "type": "github"
       }
     },
+    "monad-schedule": {
+      "inputs": {
+        "nixpkgs": [
+          "rhine",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1731107003,
+        "narHash": "sha256-au6hQM8V4lZtYiwYZl88pAr7xNtFit3pQR0AXvUTuyo=",
+        "owner": "turion",
+        "repo": "monad-schedule",
+        "rev": "f6651c56975bd9e126b9d1d5c8eed0a304d38a30",
+        "type": "github"
+      },
+      "original": {
+        "owner": "turion",
+        "repo": "monad-schedule",
+        "type": "github"
+      }
+    },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1722062969,
-        "narHash": "sha256-QOS0ykELUmPbrrUGmegAUlpmUFznDQeR4q7rFhl8eQg=",
+        "lastModified": 1734649271,
+        "narHash": "sha256-4EVBRhOjMDuGtMaofAIqzJbg4Ql7Ai0PSeuVZTHjyKQ=",
         "owner": "nixos",
         "repo": "nixpkgs",
-        "rev": "b73c2221a46c13557b1b3be9c2070cc42cf01eb3",
+        "rev": "d70bd19e0a38ad4790d3913bf08fcbfc9eeca507",
         "type": "github"
       },
       "original": {
@@ -55,16 +76,17 @@
     },
     "rhine": {
       "inputs": {
+        "monad-schedule": "monad-schedule",
         "nixpkgs": [
           "nixpkgs"
         ]
       },
       "locked": {
-        "lastModified": 1721989593,
-        "narHash": "sha256-AhGHDBuxH63WuvuBywKsWdglTvIK2OH8uYu7fMwVe8Q=",
+        "lastModified": 1732893612,
+        "narHash": "sha256-j3DU2yExeCOisCYiWFgDvYuZL7U6huzMpg8DFkyNVUA=",
         "owner": "turion",
         "repo": "rhine",
-        "rev": "ea05fe2ac9a0b776712776c56483bec895598fce",
+        "rev": "09969fe174d2c28ec1c326d3c8baf0635514f715",
         "type": "github"
       },
       "original": {

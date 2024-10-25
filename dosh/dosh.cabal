@@ -1,6 +1,6 @@
 cabal-version:      3.0
 name:               dosh
-version:            24.6
+version:            24.11
 synopsis:           The power of Haskell in your terminal!
 homepage:           https://github.com/ners/dosh
 license:            Apache-2.0
