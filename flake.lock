@@ -37,34 +37,13 @@
         "type": "github"
       }
     },
-    "monad-schedule": {
-      "inputs": {
-        "nixpkgs": [
-          "rhine",
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1731107003,
-        "narHash": "sha256-au6hQM8V4lZtYiwYZl88pAr7xNtFit3pQR0AXvUTuyo=",
-        "owner": "turion",
-        "repo": "monad-schedule",
-        "rev": "f6651c56975bd9e126b9d1d5c8eed0a304d38a30",
-        "type": "github"
-      },
-      "original": {
-        "owner": "turion",
-        "repo": "monad-schedule",
-        "type": "github"
-      }
-    },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1734649271,
-        "narHash": "sha256-4EVBRhOjMDuGtMaofAIqzJbg4Ql7Ai0PSeuVZTHjyKQ=",
+        "lastModified": 1747542820,
+        "narHash": "sha256-GaOZntlJ6gPPbbkTLjbd8BMWaDYafhuuYRNrxCGnPJw=",
         "owner": "nixos",
         "repo": "nixpkgs",
-        "rev": "d70bd19e0a38ad4790d3913bf08fcbfc9eeca507",
+        "rev": "292fa7d4f6519c074f0a50394dbbe69859bb6043",
         "type": "github"
       },
       "original": {
@@ -74,32 +53,10 @@
         "type": "github"
       }
     },
-    "rhine": {
-      "inputs": {
-        "monad-schedule": "monad-schedule",
-        "nixpkgs": [
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1732893612,
-        "narHash": "sha256-j3DU2yExeCOisCYiWFgDvYuZL7U6huzMpg8DFkyNVUA=",
-        "owner": "turion",
-        "repo": "rhine",
-        "rev": "09969fe174d2c28ec1c326d3c8baf0635514f715",
-        "type": "github"
-      },
-      "original": {
-        "owner": "turion",
-        "repo": "rhine",
-        "type": "github"
-      }
-    },
     "root": {
       "inputs": {
         "lsp-client": "lsp-client",
         "nixpkgs": "nixpkgs",
-        "rhine": "rhine",
         "terminal-widgets": "terminal-widgets"
       }
     },
@@ -112,11 +69,11 @@
         "text-rope-zipper": "text-rope-zipper"
       },
       "locked": {
-        "lastModified": 1722190697,
-        "narHash": "sha256-XoLugIypFEy92wrtPZcUd1zF1xuh/WLfHT/r72jgonI=",
+        "lastModified": 1747032652,
+        "narHash": "sha256-xZuRjY/2qGVnJh+FqvIgD6vvp54XS/gVdQW4fJYVJPE=",
         "owner": "ners",
         "repo": "terminal-widgets",
-        "rev": "fe5f624cc06721dfd7fd633a263bd72905d91be4",
+        "rev": "340da41e149439a5ee0370bb5701c9c26e30a8ff",
         "type": "github"
       },
       "original": {
@@ -133,11 +90,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1722189394,
-        "narHash": "sha256-qtqSs7p12tqSFS0EeNLaC5JNINvijh9uuNKkXDu8dJE=",
+        "lastModified": 1747032609,
+        "narHash": "sha256-YmKNWufghcqemlyBVBxv0k4L9Fovk7P3J9Pr9Xf+iiI=",
         "owner": "ners",
         "repo": "text-rope-zipper",
-        "rev": "a69b784c98dc2bdee903380e5cb59c7474ab924f",
+        "rev": "3e30d8775a7518dd43f5c9ff6b4b0527d44fb731",
         "type": "github"
       },
       "original": {

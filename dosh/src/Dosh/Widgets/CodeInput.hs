@@ -58,7 +58,7 @@ instance Widget CodeInput where
         getter CodeInput{..} = input ^. cursor . withVirtualLines diagnostics
         setter :: CodeInput -> Terminal.Position -> CodeInput
         setter input pos = input & #input . cursor . withVirtualLines input.diagnostics .~ pos
-    handleEvent e = #input %~ handleEvent e
+    handleEvent = over #input . handleEvent
     submitEvent = submitEvent . (.input)
     valid = valid . (.input)
     lineCount CodeInput{..} = lineCount input + sumOn' (length . Text.lines . (._message)) diagnostics

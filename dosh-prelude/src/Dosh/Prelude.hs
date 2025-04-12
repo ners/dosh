@@ -1,3 +1,5 @@
+{-# LANGUAGE PackageImports #-}
+
 module Dosh.Prelude
     ( module Prelude
     , module Control.Applicative
@@ -28,6 +30,7 @@ module Dosh.Prelude
     )
 where
 
+import "base" Prelude hiding (unzip)
 import Control.Applicative
 import Control.Arrow
 import Control.Lens

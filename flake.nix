@@ -12,10 +12,6 @@
       url = "github:ners/lsp-client";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    rhine = {
-      url = "github:turion/rhine";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
     terminal-widgets = {
       url = "github:ners/terminal-widgets";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -31,9 +27,9 @@
         else if isAttrs xs then mapAttrsToList f xs
         else throw "foreach: expected list or attrset but got ${typeOf xs}"
       );
-      hsSrc = root: with lib.fileset; toSource {
+      sourceFilter = root: with lib.fileset; toSource {
         inherit root;
-        fileset = fileFilter (file: any file.hasExt [ "cabal" "hs" "md" ] || file.type == "directory") ./.;
+        fileset = fileFilter (file: any file.hasExt [ "cabal" "hs" "md" ]) root;
       };
       readDirs = root: attrNames (lib.filterAttrs (_: type: type == "directory") (readDir root));
       readFiles = root: attrNames (lib.filterAttrs (_: type: type == "regular") (readDir root));
@@ -60,22 +56,30 @@
       cabalPackageOverlay = name: root: hfinal: hprev: {
         ${name} = hfinal.callCabal2nix name root { };
       };
-      project = hsSrc ./.;
-      pnames = cabalProjectPnames project;
-      hpsFor = pkgs: with lib;
-        { default = pkgs.haskellPackages; }
-        // filterAttrs
-          (name: hp: match "ghc[0-9]{2}" name != null && versionAtLeast hp.ghc.version "9.2")
-          pkgs.haskell.packages;
+      src = sourceFilter ./.;
+      pnames = cabalProjectPnames src;
+      ghcsFor = pkgs: with lib; foldlAttrs
+        (acc: name: hp:
+          let
+            version = getVersion hp.ghc;
+            majorMinor = versions.majorMinor version;
+            ghcName = "ghc${replaceStrings ["."] [""] majorMinor}";
+          in
+          if hp ? ghc && ! acc ? ${ghcName} && versionAtLeast version "9.6" && versionOlder version "9.10"
+          then acc // { ${ghcName} = hp; }
+          else acc
+        )
+        { }
+        pkgs.haskell.packages;
+      hpsFor = pkgs: { default = pkgs.haskellPackages; } // ghcsFor pkgs;
       overlay = lib.composeManyExtensions [
         inputs.lsp-client.overlays.default
         inputs.terminal-widgets.overlays.default
-        inputs.rhine.overlays.default
         (final: prev: {
           haskell = prev.haskell // {
             packageOverrides = lib.composeManyExtensions [
               prev.haskell.packageOverrides
-              (cabalProjectOverlay project)
+              (cabalProjectOverlay src)
             ];
           };
           inherit (hpsFor final) dosh;
@@ -88,19 +92,41 @@
     //
     foreach inputs.nixpkgs.legacyPackages
       (system: pkgs':
-        let pkgs = pkgs'.extend overlay; in
+        let
+          pkgs = pkgs'.extend overlay;
+          hps = hpsFor pkgs;
+          paths = lib.mapCartesianProduct
+            ({ hp, pname }: hp.${pname})
+            { hp = attrValues hps; pname = pnames; };
+          pathsFor = hp: map (pname: hp.${pname}) pnames;
+          pname = "dosh";
+          bins = pkgs.buildEnv {
+            name = "${pname}-bins";
+            paths = pathsFor hps.default;
+            pathsToLink = [ "/bin" ];
+          };
+          libs = pkgs.buildEnv {
+            name = "${pname}-libs";
+            inherit paths;
+            pathsToLink = [ "/lib" ];
+          };
+        in
         {
           formatter.${system} = pkgs.nixpkgs-fmt;
           legacyPackages.${system} = pkgs;
-          packages.${system}.default = pkgs.haskellPackages.dosh;
+          packages.${system}.default = pkgs.symlinkJoin {
+            name = "${pname}-all";
+            paths = [ bins libs ];
+            inherit (hps.default.${pname}) meta;
+          };
           devShells.${system} =
             foreach (hpsFor pkgs) (ghcName: hp: {
               ${ghcName} = hp.shellFor {
-                packages = ps: map (pname: ps.${pname}) pnames;
-                nativeBuildInputs = with pkgs.haskellPackages; [
-                  cabal-install
-                  fourmolu
-                  haskell-language-server
+                packages = pathsFor;
+                nativeBuildInputs = [
+                  pkgs'.haskellPackages.cabal-install
+                  hp.fourmolu
+                  hp.haskell-language-server
                 ];
               };
             });
