@@ -24,11 +24,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1733862950,
-        "narHash": "sha256-N5Ligp6yy3o629u1/7ZBZ+1IiQZiVNgrM/L0pXzKbLE=",
+        "lastModified": 1761468824,
+        "narHash": "sha256-ofF1g1I8a2KvQpZ7LCBPoM/YyjU1JhFuLXlYT03ylNc=",
         "owner": "ners",
         "repo": "lsp-client",
-        "rev": "bdaa67fe88e1b5717e338e265ff941455562fe10",
+        "rev": "e406ee2a3badf2f519e3c4571d44e3765263a893",
         "type": "github"
       },
       "original": {
@@ -39,16 +39,16 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1747542820,
-        "narHash": "sha256-GaOZntlJ6gPPbbkTLjbd8BMWaDYafhuuYRNrxCGnPJw=",
+        "lastModified": 1761173472,
+        "narHash": "sha256-m9W0dYXflzeGgKNravKJvTMR4Qqa2MVD11AwlGMufeE=",
         "owner": "nixos",
         "repo": "nixpkgs",
-        "rev": "292fa7d4f6519c074f0a50394dbbe69859bb6043",
+        "rev": "c8aa8cc00a5cb57fada0851a038d35c08a36a2bb",
         "type": "github"
       },
       "original": {
         "owner": "nixos",
-        "ref": "nixos-unstable",
+        "ref": "nixos-25.05",
         "repo": "nixpkgs",
         "type": "github"
       }
@@ -69,11 +69,11 @@
         "text-rope-zipper": "text-rope-zipper"
       },
       "locked": {
-        "lastModified": 1747032652,
-        "narHash": "sha256-xZuRjY/2qGVnJh+FqvIgD6vvp54XS/gVdQW4fJYVJPE=",
+        "lastModified": 1761402697,
+        "narHash": "sha256-jGVOHAA8OdwBRztqVPlef1nnlO3rDo3Zzwt1vlKIQ3Q=",
         "owner": "ners",
         "repo": "terminal-widgets",
-        "rev": "340da41e149439a5ee0370bb5701c9c26e30a8ff",
+        "rev": "e4b821f7c25fe60c9d86ed82f552c689640b3b1a",
         "type": "github"
       },
       "original": {
@@ -90,11 +90,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1747032609,
-        "narHash": "sha256-YmKNWufghcqemlyBVBxv0k4L9Fovk7P3J9Pr9Xf+iiI=",
+        "lastModified": 1761400309,
+        "narHash": "sha256-MPP0aSI/NPRUmGB5grQ0cSrGKKsvBQSVfs7gtdVvN5Y=",
         "owner": "ners",
         "repo": "text-rope-zipper",
-        "rev": "3e30d8775a7518dd43f5c9ff6b4b0527d44fb731",
+        "rev": "a1c42b88eb2ad875020a69ce34ec1e58b8f741b5",
         "type": "github"
       },
       "original": {

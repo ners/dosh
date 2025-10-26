@@ -7,7 +7,7 @@
   };
 
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-25.05";
     lsp-client = {
       url = "github:ners/lsp-client";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -29,65 +29,47 @@
       );
       sourceFilter = root: with lib.fileset; toSource {
         inherit root;
-        fileset = fileFilter (file: any file.hasExt [ "cabal" "hs" "md" ]) root;
+        fileset = fileFilter
+          (file: any file.hasExt [ "cabal" "hs" "md" "ftl" ])
+          root;
       };
-      readDirs = root: attrNames (lib.filterAttrs (_: type: type == "directory") (readDir root));
-      readFiles = root: attrNames (lib.filterAttrs (_: type: type == "regular") (readDir root));
-      basename = path: suffix: with lib; pipe path [
-        (splitString "/")
-        last
-        (removeSuffix suffix)
-      ];
-      cabalProjectPackages = root: with lib; foreach (readDirs root) (dir:
-        let
-          path = "${root}/${dir}";
-          files = readFiles path;
-          cabalFiles = filter (strings.hasSuffix ".cabal") files;
-          pnames = map (path: basename path ".cabal") cabalFiles;
-          pname = if pnames == [ ] then null else head pnames;
-        in
-        optionalAttrs (pname != null) { ${pname} = path; }
-      );
-      cabalProjectPnames = root: lib.attrNames (cabalProjectPackages root);
-      cabalProjectOverlay = root: hfinal: hprev: with lib;
-        mapAttrs
-          (pname: path: hfinal.callCabal2nix pname path { })
-          (cabalProjectPackages root);
-      cabalPackageOverlay = name: root: hfinal: hprev: {
-        ${name} = hfinal.callCabal2nix name root { };
-      };
-      src = sourceFilter ./.;
-      pnames = cabalProjectPnames src;
       ghcsFor = pkgs: with lib; foldlAttrs
-        (acc: name: hp:
+        (acc: name: hp':
           let
-            version = getVersion hp.ghc;
+            hp = tryEval hp';
+            version = getVersion hp.value.ghc;
             majorMinor = versions.majorMinor version;
             ghcName = "ghc${replaceStrings ["."] [""] majorMinor}";
           in
-          if hp ? ghc && ! acc ? ${ghcName} && versionAtLeast version "9.6" && versionOlder version "9.10"
-          then acc // { ${ghcName} = hp; }
+          if hp.value ? ghc && ! acc ? ${ghcName} && versionAtLeast version "9.4" && versionOlder version "9.12"
+          then acc // { ${ghcName} = hp.value; }
           else acc
         )
         { }
         pkgs.haskell.packages;
       hpsFor = pkgs: { default = pkgs.haskellPackages; } // ghcsFor pkgs;
+      pnames = map (path: baseNameOf (dirOf path)) (lib.fileset.toList (lib.fileset.fileFilter (file: file.hasExt "cabal") ./.));
+      haskell-overlay = lib.composeManyExtensions [
+        inputs.lsp-client.overlays.haskell
+        inputs.terminal-widgets.overlays.haskell
+        (hfinal: hprev: lib.genAttrs pnames (pname: hfinal.callCabal2nix pname (sourceFilter ./${pname}) { }))
+      ];
       overlay = lib.composeManyExtensions [
-        inputs.lsp-client.overlays.default
-        inputs.terminal-widgets.overlays.default
         (final: prev: {
           haskell = prev.haskell // {
             packageOverrides = lib.composeManyExtensions [
               prev.haskell.packageOverrides
-              (cabalProjectOverlay src)
+              haskell-overlay
             ];
           };
-          inherit (hpsFor final) dosh;
         })
       ];
     in
     {
-      overlays.default = overlay;
+      overlays = {
+        default = overlay;
+        haskell = haskell-overlay;
+      };
     }
     //
     foreach inputs.nixpkgs.legacyPackages
@@ -95,37 +77,20 @@
         let
           pkgs = pkgs'.extend overlay;
           hps = hpsFor pkgs;
-          paths = lib.mapCartesianProduct
-            ({ hp, pname }: hp.${pname})
-            { hp = attrValues hps; pname = pnames; };
-          pathsFor = hp: map (pname: hp.${pname}) pnames;
-          pname = "dosh";
-          bins = pkgs.buildEnv {
-            name = "${pname}-bins";
-            paths = pathsFor hps.default;
-            pathsToLink = [ "/bin" ];
-          };
-          libs = pkgs.buildEnv {
-            name = "${pname}-libs";
-            inherit paths;
-            pathsToLink = [ "/lib" ];
-          };
         in
         {
           formatter.${system} = pkgs.nixpkgs-fmt;
           legacyPackages.${system} = pkgs;
-          packages.${system}.default = pkgs.symlinkJoin {
-            name = "${pname}-all";
-            paths = [ bins libs ];
-            inherit (hps.default.${pname}) meta;
-          };
+          packages.${system}.default = hps.default.dosh;
           devShells.${system} =
-            foreach (hpsFor pkgs) (ghcName: hp: {
+            foreach hps (ghcName: hp: {
               ${ghcName} = hp.shellFor {
-                packages = pathsFor;
-                nativeBuildInputs = [
-                  pkgs'.haskellPackages.cabal-install
-                  hp.fourmolu
+                packages = ps: map (pname: ps.${pname}) pnames;
+                nativeBuildInputs = with pkgs'; with haskellPackages; [
+                  cabal-install
+                  cabal-gild
+                  fourmolu
+                ] ++ lib.optionals (lib.versionAtLeast (lib.getVersion hp.ghc) "9.4") [
                   hp.haskell-language-server
                 ];
               };
