@@ -1,14 +1,15 @@
 {-# LANGUAGE UndecidableInstances #-}
+{-# OPTIONS_GHC -Wno-missing-role-annotations #-}
 
 module Dosh.App where
 
-import Control.Monad.Schedule.Class
-import Data.List.NonEmpty
 import Language.LSP.Client.Session (MonadSession, SessionT)
 import System.Terminal
 import System.Terminal.Extra ()
 import System.Terminal.Internal (LocalTerminal, Terminal)
 import Prelude
+import FRP.Rhine.Terminal ()
+import Data.Automaton.Schedule (MonadSchedule (..))
 
 newtype AppT t m a = App {unApp :: TerminalT t (SessionT m) a}
     deriving newtype
@@ -22,6 +23,7 @@ newtype AppT t m a = App {unApp :: TerminalT t (SessionT m) a}
         , MonadScreen
         , MonadTerminal
         , MonadSession
+        , MonadSchedule
         )
 
 type AppExceptT e t m = ExceptT e (AppT t m)
@@ -29,12 +31,6 @@ type AppExceptT e t m = ExceptT e (AppT t m)
 type App = AppT LocalTerminal IO
 
 type AppExcept = AppExceptT Interrupt LocalTerminal IO
-
-instance (MonadSchedule (TerminalT t (SessionT m)), Monad m) => MonadSchedule (AppT t m) where
-    schedule :: NonEmpty (AppT t m a) -> AppT t m (NonEmpty a, [AppT t m a])
-    schedule as = App do
-        (x, y) <- schedule (as <&> (.unApp))
-        pure (x, App <$> y)
 
 instance
     ( MonadIO m

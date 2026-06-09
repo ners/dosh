@@ -7,7 +7,19 @@
   };
 
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-25.05";
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+    changeset = {
+      url = "github:turion/changeset";
+      flake = false;
+    };
+    rhine = {
+      url = "github:turion/rhine";
+      flake = false;
+    };
+    time-domain = {
+      url = "github:turion/time-domain";
+      flake = false;
+    };
     lsp-client = {
       url = "github:ners/lsp-client";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -30,7 +42,7 @@
       sourceFilter = root: with lib.fileset; toSource {
         inherit root;
         fileset = fileFilter
-          (file: any file.hasExt [ "cabal" "hs" "md" "ftl" ])
+          (file: any file.hasExt [ "cabal" "hs" "md" ])
           root;
       };
       ghcsFor = pkgs: with lib; foldlAttrs
@@ -53,6 +65,13 @@
         inputs.lsp-client.overlays.haskell
         inputs.terminal-widgets.overlays.haskell
         (hfinal: hprev: lib.genAttrs pnames (pname: hfinal.callCabal2nix pname (sourceFilter ./${pname}) { }))
+        (hfinal: hprev: {
+          automaton = hfinal.callCabal2nix "automaton" "${inputs.rhine}/automaton" {};
+          changeset = hfinal.callCabal2nix "changeset" "${inputs.changeset}/changeset" {};
+          rhine = hfinal.callCabal2nix "rhine" "${inputs.rhine}/rhine" {};
+          rhine-terminal = hfinal.callCabal2nix "rhine-terminal" "${inputs.rhine}/rhine-terminal" {};
+          time-domain = hfinal.callCabal2nix "time-domain" "${inputs.rhine}/time-domain" {};
+        })
       ];
       overlay = lib.composeManyExtensions [
         (final: prev: {

@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -Wno-name-shadowing #-}
 module Dosh.Widgets.CodeInput where
 
 import Data.Foldable.Extra (sumOn')
@@ -15,12 +16,12 @@ import Language.LSP.Protocol.Lens qualified as LSP
 import Language.LSP.Protocol.Types qualified as LSP
 import Prettyprinter qualified
 import System.Terminal qualified as Terminal
-import System.Terminal.Widgets.Common
-import System.Terminal.Widgets.TextInput
+import System.Terminal.Widget
+import System.Terminal.Widget qualified as Widget
 import Prelude
 import Data.Generics.Product qualified as Lens
 import Data.Text.Rope.Zipper (RopeZipper)
-import System.Terminal.Widgets.Common qualified as Widget
+import Prettyprinter (defaultLayoutOptions, layoutPretty)
 
 data CodeInput = CodeInput
     { input :: TextInput
@@ -62,7 +63,7 @@ instance Widget CodeInput where
     submitEvent = submitEvent . (.input)
     valid = valid . (.input)
     lineCount CodeInput{..} = lineCount input + sumOn' (length . Text.lines . (._message)) diagnostics
-    toDoc CodeInput{..} = go (Rope.Position 0 0) rope intervals diagnostics
+    toDocStream CodeInput{..} = layoutPretty defaultLayoutOptions $ go (Rope.Position 0 0) rope intervals diagnostics
       where
         rope = padRopeLines input.prompt $ RopeZipper.toRope input.value
         ropeStart = Rope.Position 0 0
@@ -135,7 +136,7 @@ renderDiagnostics _ [] = mempty
 renderDiagnostics pad (d : ds) = mconcat messageLines <> renderDiagnostics pad ds
   where
     messageLines =
-        zipWith (\i t -> startColPad i <> colour d (t <> "\n")) [0 ..] $
+        zipWith (\i t -> startColPad i <> colour d (t <> "\n")) [0 :: Int ..] $
             Text.lines d._message
     lastLen = maybe 0 (fromIntegral . (+ 3) . (._range._start._character)) (listToMaybe ds)
     startColPad line =

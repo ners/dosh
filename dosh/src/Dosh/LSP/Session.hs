@@ -1,8 +1,6 @@
 module Dosh.LSP.Session where
 
 import Colog.Core (LogAction (..), Severity (..), WithSeverity (..))
-import Control.Monad.Schedule.Class (MonadSchedule)
-import Data.Automaton.Trans.Except (reactimateExcept, try)
 import Data.ByteString (hGetSome, hPut)
 import Data.ByteString qualified as ByteString
 import Data.ByteString.Builder.Extra (defaultChunkSize)
@@ -35,6 +33,8 @@ import Language.LSP.Client (runSessionWithHandles)
 import Language.LSP.Client.Session (SessionT)
 import System.Process.Extra (createPipe)
 import Prelude
+import Data.Void (absurd)
+import Data.Automaton.Schedule (MonadSchedule)
 
 runSession :: (MonadUnliftIO m) => SessionT m a -> m a
 runSession actions = do
@@ -135,8 +135,8 @@ flowSession
        , Clock m DiagnosticsClock
        , Clock m SemanticTokensClock
        , Monad m'
-       , me' ~ ExceptT e m'
        , MonadSchedule m'
+       , me' ~ ExceptT e m'
        , Clock me' cl
        , Clock me' (In cl)
        , Clock me' (Out cl)
@@ -150,6 +150,7 @@ flowSession
        , GetClockProxy cl'
        , Time cl' ~ UTCTime
        , Time (In cl') ~ UTCTime
+       , Time (Out cl') ~ UTCTime
        )
     => st
     -> ClSF m DiagnosticsClock st st
@@ -181,10 +182,9 @@ flowExcept
     :: ( Monad m
        , Clock (ExceptT e m) cl
        , GetClockProxy cl
+       , Time (In cl) ~ Time cl
+       , Time (Out cl) ~ Time cl
        )
     => Rhine (ExceptT e m) cl () ()
     -> m e
-flowExcept rhine =
-    runExceptT (eraseClock rhine) >>= \case
-        Left e -> pure e
-        Right msf -> reactimateExcept . try $ msf >>> arr (const ())
+flowExcept = fmap (either id absurd) . runExceptT . flow

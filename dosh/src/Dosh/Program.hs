@@ -44,8 +44,8 @@ import System.Terminal
     , withTerminal
     )
 import System.Terminal qualified as Terminal
-import System.Terminal.Widgets.Common qualified as Widget
-import System.Terminal.Widgets.TextInput
+import System.Terminal.Widget (TextInput(..))
+import System.Terminal.Widget qualified as Widget
 import Prelude
 
 data DoshState = DoshState
